@@ -1,0 +1,123 @@
+{
+  "copropriete": "Résidence Les Mimosas",
+  "exercice": 2027,
+  "trimestre": 1,
+  "date_emission": "2026-12-11",
+  "date_exigibilite": "2027-01-01",
+  "statut": "projet",
+  "total": "5250.00",
+  "avis": [
+    {
+      "coproprietaire": "CP01",
+      "nom": "Martin Alice",
+      "envoi": "email",
+      "email": "alice.martin@exemple.fr",
+      "montant": "225.00",
+      "fichier": "avis_CP01.pdf"
+    },
+    {
+      "coproprietaire": "CP02",
+      "nom": "Bernard Louis",
+      "envoi": "email",
+      "email": "louis.bernard@exemple.fr",
+      "montant": "327.00",
+      "fichier": "avis_CP02.pdf"
+    },
+    {
+      "coproprietaire": "CP03",
+      "nom": "Durand Camille",
+      "envoi": "email",
+      "email": "camille.durand@exemple.fr",
+      "montant": "300.00",
+      "fichier": "avis_CP03.pdf"
+    },
+    {
+      "coproprietaire": "CP04",
+      "nom": "Petit Hugo",
+      "envoi": "email",
+      "email": "hugo.petit@exemple.fr",
+      "montant": "393.00",
+      "fichier": "avis_CP04.pdf"
+    },
+    {
+      "coproprietaire": "CP05",
+      "nom": "Moreau Léa",
+      "envoi": "email",
+      "email": "lea.moreau@exemple.fr",
+      "montant": "240.00",
+      "fichier": "avis_CP05.pdf"
+    },
+    {
+      "coproprietaire": "CP06",
+      "nom": "SCI Les Pins",
+      "envoi": "email",
+      "email": "contact@sci-lespins.exemple.fr",
+      "montant": "664.50",
+      "fichier": "avis_CP06.pdf"
+    },
+    {
+      "coproprietaire": "CP07",
+      "nom": "Laurent Inès",
+      "envoi": "email",
+      "email": "ines.laurent@exemple.fr",
+      "montant": "415.50",
+      "fichier": "avis_CP07.pdf"
+    },
+    {
+      "coproprietaire": "CP08",
+      "nom": "Simon Paul",
+      "envoi": "courrier",
+      "email": null,
+      "montant": "243.75",
+      "fichier": "avis_CP08.pdf"
+    },
+    {
+      "coproprietaire": "CP09",
+      "nom": "Michel Chloé",
+      "envoi": "email",
+      "email": "chloe.michel@exemple.fr",
+      "montant": "322.50",
+      "fichier": "avis_CP09.pdf"
+    },
+    {
+      "coproprietaire": "CP10",
+      "nom": "Garcia Nathan",
+      "envoi": "email",
+      "email": "nathan.garcia@exemple.fr",
+      "montant": "349.50",
+      "fichier": "avis_CP10.pdf"
+    },
+    {
+      "coproprietaire": "CP11",
+      "nom": "Roux Manon",
+      "envoi": "email",
+      "email": "manon.roux@exemple.fr",
+      "montant": "419.25",
+      "fichier": "avis_CP11.pdf"
+    },
+    {
+      "coproprietaire": "CP12",
+      "nom": "Fournier Jules",
+      "envoi": "email",
+      "email": "jules.fournier@exemple.fr",
+      "montant": "247.50",
+      "fichier": "avis_CP12.pdf"
+    },
+    {
+      "coproprietaire": "CP13",
+      "nom": "Girard Emma",
+      "envoi": "courrier",
+      "email": null,
+      "montant": "326.25",
+      "fichier": "avis_CP13.pdf"
+    },
+    {
+      "coproprietaire": "CP14",
+      "nom": "Bonnet Lucas",
+      "envoi": "email",
+      "email": "lucas.bonnet@exemple.fr",
+      "montant": "776.25",
+      "fichier": "avis_CP14.pdf"
+    }
+  ]
+}

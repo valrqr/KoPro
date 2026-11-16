@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Documents générés (contiennent des données personnelles)
+out/
+
+# Fiches de vraies copros : seule la démo fictive est versionnée
+config/*.yaml
+!config/mimosas.yaml
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

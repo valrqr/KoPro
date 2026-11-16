@@ -1,0 +1,178 @@
+# =============================================================================
+#  FICHE DE CONFIGURATION — Copropriété démo « Résidence Les Mimosas »
+# =============================================================================
+#  ⚠️  DONNÉES ENTIÈREMENT FICTIVES — aucune personne ni adresse réelle.
+#  Cette fiche sert de démo, de jeu de test et de modèle pour une vraie copro.
+#
+#  Principe : le code (core/) est commun à toutes les copros.
+#  Tout ce qui est propre à UNE copro vit ici, et seulement ici.
+# =============================================================================
+
+version_schema: 1
+
+# -----------------------------------------------------------------------------
+# 1. Identité de la copropriété
+# -----------------------------------------------------------------------------
+copropriete:
+  nom: "Résidence Les Mimosas"
+  adresse: "12 avenue des Exemples, 06000 Nice"        # fictive
+  immatriculation_registre: "AA0-000-000"              # n° fictif du registre national
+  destination: residentielle
+  date_reglement: 1987-03-12
+  nb_lots_principaux: 16                                # appartements
+  nb_lots_total: 24                                     # + caves et parkings
+  batiments: [A]
+
+# -----------------------------------------------------------------------------
+# 2. Gouvernance
+# -----------------------------------------------------------------------------
+gouvernance:
+  mode_gestion: cooperatif          # benevole | cooperatif
+  syndic:
+    coproprietaire_id: CP03
+    debut_mandat: 2027-01-01
+    fin_mandat: 2029-12-31          # 3 ans maximum
+  conseil_syndical: [CP03, CP07, CP12]
+  exercice:
+    debut: "01-01"                  # MM-JJ
+    fin: "12-31"
+  ag_annuelle_delai_mois: 6         # AG dans les 6 mois suivant la clôture
+
+# -----------------------------------------------------------------------------
+# 3. Clés de répartition (tantièmes)
+#    Chaque lot doit avoir une valeur pour chaque clé (0 si non concerné).
+#    La somme des tantièmes d'une clé doit être égale à sa base.
+# -----------------------------------------------------------------------------
+cles_repartition:
+  generales:
+    libelle: "Charges générales"
+    base: 10000
+  ascenseur:
+    libelle: "Charges d'ascenseur"
+    base: 1000
+
+# -----------------------------------------------------------------------------
+# 4. Copropriétaires (fictifs)
+# -----------------------------------------------------------------------------
+coproprietaires:
+  - { id: CP01, nom: "Martin Alice",     email: alice.martin@exemple.fr,     envoi: email }
+  - { id: CP02, nom: "Bernard Louis",    email: louis.bernard@exemple.fr,    envoi: email }
+  - { id: CP03, nom: "Durand Camille",   email: camille.durand@exemple.fr,   envoi: email }
+  - { id: CP04, nom: "Petit Hugo",       email: hugo.petit@exemple.fr,       envoi: email }
+  - { id: CP05, nom: "Moreau Léa",       email: lea.moreau@exemple.fr,       envoi: email }
+  - { id: CP06, nom: "SCI Les Pins",     email: contact@sci-lespins.exemple.fr, envoi: email }
+  - { id: CP07, nom: "Laurent Inès",     email: ines.laurent@exemple.fr,     envoi: email }
+  - { id: CP08, nom: "Simon Paul",       email: null,                        envoi: courrier }
+  - { id: CP09, nom: "Michel Chloé",     email: chloe.michel@exemple.fr,     envoi: email }
+  - { id: CP10, nom: "Garcia Nathan",    email: nathan.garcia@exemple.fr,    envoi: email }
+  - { id: CP11, nom: "Roux Manon",       email: manon.roux@exemple.fr,       envoi: email }
+  - { id: CP12, nom: "Fournier Jules",   email: jules.fournier@exemple.fr,   envoi: email }
+  - { id: CP13, nom: "Girard Emma",      email: null,                        envoi: courrier }
+  - { id: CP14, nom: "Bonnet Lucas",     email: lucas.bonnet@exemple.fr,     envoi: email }
+
+# -----------------------------------------------------------------------------
+# 5. Lots
+#    type : appartement | cave | parking
+#    tantiemes : une valeur par clé de répartition
+# -----------------------------------------------------------------------------
+lots:
+  # --- Rez-de-chaussée
+  - { numero: 1,  type: appartement, desc: "T2 RDC",     etage: 0, proprietaire: CP01, tantiemes: { generales: 450, ascenseur: 30 } }
+  - { numero: 2,  type: appartement, desc: "T3 RDC",     etage: 0, proprietaire: CP02, tantiemes: { generales: 600, ascenseur: 40 } }
+  - { numero: 3,  type: appartement, desc: "T3 RDC",     etage: 0, proprietaire: CP03, tantiemes: { generales: 600, ascenseur: 40 } }
+  - { numero: 4,  type: appartement, desc: "T4 RDC",     etage: 0, proprietaire: CP04, tantiemes: { generales: 750, ascenseur: 50 } }
+  # --- 1er étage
+  - { numero: 5,  type: appartement, desc: "T2 1er",     etage: 1, proprietaire: CP05, tantiemes: { generales: 450, ascenseur: 50 } }
+  - { numero: 6,  type: appartement, desc: "T3 1er",     etage: 1, proprietaire: CP06, tantiemes: { generales: 600, ascenseur: 65 } }
+  - { numero: 7,  type: appartement, desc: "T3 1er",     etage: 1, proprietaire: CP06, tantiemes: { generales: 600, ascenseur: 65 } }
+  - { numero: 8,  type: appartement, desc: "T4 1er",     etage: 1, proprietaire: CP07, tantiemes: { generales: 750, ascenseur: 80 } }
+  # --- 2e étage
+  - { numero: 9,  type: appartement, desc: "T2 2e",      etage: 2, proprietaire: CP08, tantiemes: { generales: 450, ascenseur: 55 } }
+  - { numero: 10, type: appartement, desc: "T3 2e",      etage: 2, proprietaire: CP09, tantiemes: { generales: 600, ascenseur: 70 } }
+  - { numero: 11, type: appartement, desc: "T3 2e",      etage: 2, proprietaire: CP10, tantiemes: { generales: 600, ascenseur: 70 } }
+  - { numero: 12, type: appartement, desc: "T4 2e",      etage: 2, proprietaire: CP11, tantiemes: { generales: 750, ascenseur: 85 } }
+  # --- 3e étage
+  - { numero: 13, type: appartement, desc: "T2 3e",      etage: 3, proprietaire: CP12, tantiemes: { generales: 450, ascenseur: 60 } }
+  - { numero: 14, type: appartement, desc: "T3 3e",      etage: 3, proprietaire: CP13, tantiemes: { generales: 600, ascenseur: 75 } }
+  - { numero: 15, type: appartement, desc: "T3 3e",      etage: 3, proprietaire: CP14, tantiemes: { generales: 600, ascenseur: 75 } }
+  - { numero: 16, type: appartement, desc: "T4 3e",      etage: 3, proprietaire: CP14, tantiemes: { generales: 750, ascenseur: 90 } }
+  # --- Sous-sol : caves et parkings (pas de charges d'ascenseur)
+  - { numero: 17, type: cave,    desc: "Cave 1",     etage: -1, proprietaire: CP04, tantiemes: { generales: 40, ascenseur: 0 } }
+  - { numero: 18, type: cave,    desc: "Cave 2",     etage: -1, proprietaire: CP07, tantiemes: { generales: 40, ascenseur: 0 } }
+  - { numero: 19, type: cave,    desc: "Cave 3",     etage: -1, proprietaire: CP11, tantiemes: { generales: 40, ascenseur: 0 } }
+  - { numero: 20, type: cave,    desc: "Cave 4",     etage: -1, proprietaire: CP14, tantiemes: { generales: 40, ascenseur: 0 } }
+  - { numero: 21, type: parking, desc: "Parking 1",  etage: -1, proprietaire: CP02, tantiemes: { generales: 60, ascenseur: 0 } }
+  - { numero: 22, type: parking, desc: "Parking 2",  etage: -1, proprietaire: CP06, tantiemes: { generales: 60, ascenseur: 0 } }
+  - { numero: 23, type: parking, desc: "Parking 3",  etage: -1, proprietaire: CP10, tantiemes: { generales: 60, ascenseur: 0 } }
+  - { numero: 24, type: parking, desc: "Parking 4",  etage: -1, proprietaire: CP14, tantiemes: { generales: 60, ascenseur: 0 } }
+
+# -----------------------------------------------------------------------------
+# 6. Équipements
+# -----------------------------------------------------------------------------
+equipements:
+  - { id: ascenseur,   libelle: "Ascenseur 6 personnes", cle: ascenseur, contrat: CT02 }
+  - { id: interphone,  libelle: "Interphone et digicode", cle: generales, contrat: null }
+  - { id: jardin,      libelle: "Jardin collectif",       cle: generales, contrat: CT04 }
+
+# -----------------------------------------------------------------------------
+# 7. Contrats (l'échéancier légal surveille échéances et préavis)
+# -----------------------------------------------------------------------------
+contrats:
+  - { id: CT01, objet: "Assurance multirisque immeuble",  prestataire: "Assureur Exemple",     montant_annuel: 4200, echeance: 2027-12-31, preavis_mois: 2, tacite_reconduction: true }
+  - { id: CT02, objet: "Maintenance ascenseur",           prestataire: "Ascenseurs Exemple",   montant_annuel: 2400, echeance: 2027-06-30, preavis_mois: 3, tacite_reconduction: true }
+  - { id: CT03, objet: "Ménage des parties communes",     prestataire: "Propreté Exemple",     montant_annuel: 6000, echeance: 2027-09-30, preavis_mois: 1, tacite_reconduction: true }
+  - { id: CT04, objet: "Entretien du jardin",             prestataire: "Jardins Exemple",      montant_annuel: 1500, echeance: 2027-03-31, preavis_mois: 1, tacite_reconduction: false }
+
+# -----------------------------------------------------------------------------
+# 8. Budget prévisionnel de l'exercice (en euros)
+# -----------------------------------------------------------------------------
+budget_previsionnel:
+  exercice: 2027
+  postes:
+    - { libelle: "Assurance immeuble",               cle: generales, montant: 4200 }
+    - { libelle: "Ménage parties communes",          cle: generales, montant: 6000 }
+    - { libelle: "Électricité parties communes",     cle: generales, montant: 1800 }
+    - { libelle: "Eau parties communes",             cle: generales, montant: 900 }
+    - { libelle: "Entretien jardin",                 cle: generales, montant: 1500 }
+    - { libelle: "Petites réparations",              cle: generales, montant: 2000 }
+    - { libelle: "Frais bancaires et assurance RC",  cle: generales, montant: 400 }
+    - { libelle: "Maintenance ascenseur",            cle: ascenseur, montant: 2400 }
+    - { libelle: "Électricité ascenseur",            cle: ascenseur, montant: 600 }
+
+# Fonds de travaux : cotisation annuelle, au moins 5 % du budget prévisionnel
+fonds_travaux:
+  cle: generales
+  cotisation_annuelle: 1200
+
+# -----------------------------------------------------------------------------
+# 9. Appels de fonds
+# -----------------------------------------------------------------------------
+appels_de_fonds:
+  periodicite: trimestrielle
+  dates_exigibilite: ["01-01", "04-01", "07-01", "10-01"]   # MM-JJ
+  envoi_jours_avant: 21                                      # avis envoyé 3 semaines avant
+  compte_separe:                                             # compte bancaire du syndicat
+    titulaire: "Syndicat des copropriétaires Résidence Les Mimosas"
+    iban: "FR76 0000 0000 0000 0000 0000 000"                # fictif
+    bic: "EXEMFRPPXXX"                                       # fictif
+  reference_virement: "MIMOSAS-{exercice}-T{trimestre}-{coproprietaire}"
+
+# -----------------------------------------------------------------------------
+# 10. Diagnostics et obligations suivis par l'échéancier
+# -----------------------------------------------------------------------------
+diagnostics:
+  - { id: pppt,  libelle: "Projet de plan pluriannuel de travaux", realise_le: null,       validite_ans: 10 }
+  - { id: dtg,   libelle: "Diagnostic technique global",            realise_le: null,       validite_ans: 10 }
+  - { id: amiante, libelle: "Dossier technique amiante",            realise_le: 2019-05-14, validite_ans: null }
+
+# -----------------------------------------------------------------------------
+# 11. Modules de l'agent activés pour cette copro
+# -----------------------------------------------------------------------------
+modules_actifs:
+  - memoire_documentaire
+  - appels_de_fonds
+  - relances_impayes
+  - preparation_ag
+  - echeancier_legal
+  - tri_mails
+  - devis_travaux

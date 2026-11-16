@@ -1,0 +1,654 @@
+{
+  "name": "Syndic IA – Appel de fonds trimestriel",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "057a6d51-e03c-4729-be49-65913599c205",
+      "name": "Lancement manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "79f13b5b-66b4-4073-916d-eb2094ac3496",
+              "name": "moteur_url",
+              "value": "http://moteur:8000",
+              "type": "string"
+            },
+            {
+              "id": "2c8cf9c6-baa5-47e9-90e3-f8dd5ec9f891",
+              "name": "copro",
+              "value": "mimosas",
+              "type": "string"
+            },
+            {
+              "id": "5f02a5ac-d753-4601-adc6-e80da34bd2a0",
+              "name": "exercice",
+              "value": 2027,
+              "type": "number"
+            },
+            {
+              "id": "bbb0ddba-1b13-464c-a90f-7ea5bb61aced",
+              "name": "trimestre",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "0039e313-4702-4f88-b777-9c49fbafd5e0",
+              "name": "email_syndic",
+              "value": "syndic@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "8881b309-7a5f-438a-a2d6-fd07d9451ba6",
+              "name": "email_expediteur",
+              "value": "mimosas@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "990490d3-aa9f-42cf-84be-dfa1b361a851",
+              "name": "mode_test",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9620a3a2-7a04-43dd-9625-2ca7495f20eb",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.moteur_url }}/copros/{{ $('Config').first().json.copro }}/appels/{{ $('Config').first().json.exercice }}/T{{ $('Config').first().json.trimestre }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "final",
+              "value": "false"
+            }
+          ]
+        }
+      },
+      "id": "6b31def3-f8c2-48ba-9eeb-8f66cebbccf3",
+      "name": "Générer les avis (projet)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.moteur_url }}/copros/{{ $('Config').first().json.copro }}/appels/{{ $('Config').first().json.exercice }}/T{{ $('Config').first().json.trimestre }}/recap",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "db550c90-9147-409d-8b28-664fc1703b38",
+      "name": "Télécharger la récap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_syndic }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}Appel de fonds T{{ $('Config').first().json.trimestre }} {{ $('Config').first().json.exercice }} : récapitulatif à vérifier",
+        "emailFormat": "text",
+        "text": "=Bonjour,\n\n{{ $('Générer les avis (projet)').first().json.nb_avis }} avis d'appel de fonds sont prêts en version PROJET, pour un total de {{ $('Générer les avis (projet)').first().json.total }}. Le récapitulatif est en pièce jointe.\n\nVérifiez les montants, puis validez ou annulez l'envoi depuis le mail suivant.\n\nL'assistant du syndic",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "id": "3047ba11-4cc5-42ae-be80-1d4d69f4967e",
+      "name": "Envoyer la récap au syndic",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_syndic }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}Validation requise : appel de fonds T{{ $('Config').first().json.trimestre }} {{ $('Config').first().json.exercice }}",
+        "message": "=Après relecture du récapitulatif, validez-vous l'envoi des avis aux copropriétaires ?",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Valider l'envoi",
+            "disapproveLabel": "Annuler"
+          }
+        },
+        "options": {}
+      },
+      "id": "92d3282d-1cd7-4b4d-b1d8-529982c4ad43",
+      "name": "Attendre la validation",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "9742e6c3-d44b-462e-93a0-177d9d6f1168",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "36e1caae-33f7-488f-9549-509eb889fc88",
+      "name": "Validé ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.moteur_url }}/copros/{{ $('Config').first().json.copro }}/appels/{{ $('Config').first().json.exercice }}/T{{ $('Config').first().json.trimestre }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "final",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "id": "1835d1ef-f276-40b8-a6eb-131afaad0614",
+      "name": "Générer les avis (final)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "avis",
+        "options": {}
+      },
+      "id": "cda4c21e-7f4d-4dea-a67e-1b5e28cd6d94",
+      "name": "Un avis par ligne",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5eb4fcae-e490-4865-a7e2-7b07af04f989",
+              "leftValue": "={{ $json.envoi }}",
+              "rightValue": "email",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c5937a18-adc7-402d-bff7-97291707a198",
+      "name": "Par email ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.moteur_url }}/copros/{{ $('Config').first().json.copro }}/appels/{{ $('Config').first().json.exercice }}/T{{ $('Config').first().json.trimestre }}/avis/{{ $json.coproprietaire }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "545ced6b-6780-4f48-a2b9-efa14fa527f2",
+      "name": "Télécharger l'avis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.mode_test ? $('Config').first().json.email_syndic : $('Un avis par ligne').item.json.email }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}Appel de fonds – {{ $('Générer les avis (final)').first().json.copropriete }} – à régler avant le {{ $('Générer les avis (final)').first().json.date_exigibilite_fr }}",
+        "emailFormat": "text",
+        "text": "=Bonjour {{ $('Un avis par ligne').item.json.nom }},\n\nVeuillez trouver ci-joint votre avis d'appel de fonds pour le trimestre {{ $('Générer les avis (final)').first().json.trimestre }} de l'exercice {{ $('Générer les avis (final)').first().json.exercice }}.\n\nMontant : {{ $('Un avis par ligne').item.json.montant }}\nÀ régler avant le : {{ $('Générer les avis (final)').first().json.date_exigibilite_fr }}\nRéférence du virement : {{ $('Un avis par ligne').item.json.reference }}\n\nPour toute question, répondez simplement à ce mail.\n\nLe syndic de la {{ $('Générer les avis (final)').first().json.copropriete }}",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "id": "5cd22d29-b45c-43c1-a00a-db83deab5078",
+      "name": "Envoyer l'avis",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2420,
+        100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "envois",
+        "options": {}
+      },
+      "id": "eea2f35c-cd01-425b-bdce-7a8301661484",
+      "name": "Compter les envois",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_syndic }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}Appel de fonds envoyé : {{ $json.envois.length }} avis par email",
+        "emailFormat": "text",
+        "text": "={{ $json.envois.length }} avis ont été envoyés par email{{ $('Config').first().json.mode_test ? ' (mode test : tous redirigés vers le syndic)' : '' }}.\n\nTotal appelé : {{ $('Générer les avis (final)').first().json.total }}.\n\nL'assistant du syndic",
+        "options": {}
+      },
+      "id": "b460a314-c338-4fcf-b4a6-202dabb7c163",
+      "name": "Bilan au syndic",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2860,
+        100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "courriers",
+        "options": {}
+      },
+      "id": "44af4a54-6635-43d4-9a19-9067cf08ee38",
+      "name": "Regrouper les courriers",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_syndic }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}{{ $json.courriers.length }} avis à envoyer par courrier",
+        "emailFormat": "text",
+        "text": "=Ces copropriétaires n'ont pas d'adresse email. Imprimez et postez leur avis :\n\n{{ $json.courriers.map(c => '- ' + c.nom + ' : ' + c.fichier + ' (' + c.montant + ')').join('\\n') }}\n\nLes fichiers sont dans le dossier out/{{ $('Config').first().json.copro }}/{{ $('Config').first().json.exercice }}-T{{ $('Config').first().json.trimestre }}/ du projet.",
+        "options": {}
+      },
+      "id": "11966c76-f13c-4fc2-b132-2d8da491f33b",
+      "name": "Liste des courriers au syndic",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2420,
+        320
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_syndic }}",
+        "subject": "={{ $('Config').first().json.mode_test ? '[TEST] ' : '' }}Appel de fonds annulé",
+        "emailFormat": "text",
+        "text": "=L'envoi a été annulé. Aucun avis n'est parti.\n\nCorrigez la fiche de configuration, puis relancez le workflow.",
+        "options": {}
+      },
+      "id": "f0c66ac7-37a9-4061-850d-77899ae6c2d9",
+      "name": "Prévenir : envoi annulé",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1540,
+        420
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Appel de fonds trimestriel\n1. Règle le nœud **Config** (copro, exercice, trimestre, ton email)\n2. Garde **mode_test = true** : tous les mails arrivent chez toi\n3. Lance, vérifie la récap, clique **Valider** dans le mail\n\nIdentifiants : *Moteur syndic* (Header Auth, X-API-Key) et *SMTP copro*",
+        "height": 220,
+        "width": 420
+      },
+      "id": "f25b9b70-b74c-4ea6-b13f-0f48b0c6e14e",
+      "name": "Mode d'emploi",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Lancement manuel": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Générer les avis (projet)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Générer les avis (projet)": {
+      "main": [
+        [
+          {
+            "node": "Télécharger la récap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Télécharger la récap": {
+      "main": [
+        [
+          {
+            "node": "Envoyer la récap au syndic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envoyer la récap au syndic": {
+      "main": [
+        [
+          {
+            "node": "Attendre la validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendre la validation": {
+      "main": [
+        [
+          {
+            "node": "Validé ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Générer les avis (final)": {
+      "main": [
+        [
+          {
+            "node": "Un avis par ligne",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Un avis par ligne": {
+      "main": [
+        [
+          {
+            "node": "Par email ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Télécharger l'avis": {
+      "main": [
+        [
+          {
+            "node": "Envoyer l'avis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envoyer l'avis": {
+      "main": [
+        [
+          {
+            "node": "Compter les envois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compter les envois": {
+      "main": [
+        [
+          {
+            "node": "Bilan au syndic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regrouper les courriers": {
+      "main": [
+        [
+          {
+            "node": "Liste des courriers au syndic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validé ?": {
+      "main": [
+        [
+          {
+            "node": "Générer les avis (final)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prévenir : envoi annulé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Par email ?": {
+      "main": [
+        [
+          {
+            "node": "Télécharger l'avis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Regrouper les courriers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}
