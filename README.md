@@ -79,6 +79,12 @@ python tests/test_api.py                                             # les tests
 - Le moteur n'est exposé que sur `127.0.0.1` et sur le réseau interne Docker.
 - En production : hébergement en Europe, HTTPS, sauvegardes chiffrées.
 
+## Comment ce projet est construit
+
+KoPro est développé avec l'aide d'une IA (Claude, d'Anthropic), qui a écrit une grande partie du code.
+Mon rôle : définir le besoin et le périmètre, choisir le cadre juridique et l'architecture,
+tester, déployer et faire évoluer l'outil. Chaque brique est relue, testée et documentée avant publication.
+
 ## Licence
 
 AGPL-3.0.
