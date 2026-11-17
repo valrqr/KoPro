@@ -51,6 +51,31 @@ def test_garde_fous():
     assert c.get(f"{BASE}/avis/CP99", headers=H).status_code == 404
 
 
+def test_echeancier_copro():
+    r = c.get("/copros/mimosas/echeancier", params={"au": "2027-02-15"}, headers=H).json()
+    assert r["syndic"]["email"] == "camille.durand@exemple.fr"
+    assert r["nb_alertes"] == 4
+    types = [a["type"] for a in r["alertes"]]
+    assert types.count("contrat") == 2 and types.count("diagnostic") == 2
+    jardin = next(a for a in r["alertes"] if a["titre"] == "Entretien du jardin")
+    assert "sans reconduction" in jardin["message"] and jardin["date"] == "2027-03-31"
+    ascenseur = next(a for a in r["alertes"] if a["titre"] == "Maintenance ascenseur")
+    assert ascenseur["date"] == "2027-03-30"          # 30/06 - 3 mois, au jour près
+
+
+def test_echeancier_ag_et_urgence():
+    r = c.get("/copros/mimosas/echeancier", params={"au": "2027-06-01"}, headers=H).json()
+    ag = next(a for a in r["alertes"] if a["type"] == "ag")
+    assert ag["date"] == "2027-06-30" and ag["niveau"] == "urgent" and "09/06/2027" in ag["message"]
+    assert r["alertes"][0]["niveau"] == "urgent"     # les urgences en premier
+
+
+def test_echeancier_global():
+    r = c.get("/echeancier", params={"au": "2027-02-15", "horizon": 60}, headers=H).json()
+    assert r["nb_copros"] == 1 and r["rapports"][0]["copro"] == "mimosas"
+    assert c.get("/echeancier", params={"horizon": 0}, headers=H).status_code == 422
+
+
 if __name__ == "__main__":
     for nom, f in list(globals().items()):
         if nom.startswith("test_"):

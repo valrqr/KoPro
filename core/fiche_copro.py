@@ -17,10 +17,11 @@ Rappel : l'agent PRÉPARE, le syndic VALIDE. Rien n'est envoyé par ce script.
 from __future__ import annotations
 
 import argparse
+import calendar
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
@@ -121,26 +122,104 @@ def valider(fiche: dict) -> Rapport:
 # --------------------------------------------------------------------------- #
 # Échéancier : ce que l'agent signalera au syndic
 # --------------------------------------------------------------------------- #
-def alertes_echeancier(fiche: dict, aujourd_hui: date) -> list[str]:
-    alertes = []
+SEUIL_URGENT_JOURS = 30
+DELAI_CONVOCATION_AG_JOURS = 21   # convocation au moins 21 jours avant l'AG (décret de 1967, art. 9)
+
+
+def ajouter_mois(d: date, n: int) -> date:
+    """Ajoute (ou retire si n < 0) n mois à une date, en gardant le jour quand il existe :
+    31/03 - 1 mois = 28/02 (ou 29/02)."""
+    total = d.year * 12 + (d.month - 1) + n
+    annee, mois = divmod(total, 12)
+    mois += 1
+    return date(annee, mois, min(d.day, calendar.monthrange(annee, mois)[1]))
+
+
+def _niveau(jours: int | None) -> str:
+    if jours is None:
+        return "a_prevoir"
+    if jours < 0:
+        return "depasse"
+    return "urgent" if jours <= SEUIL_URGENT_JOURS else "a_prevoir"
+
+
+def _alerte(type_: str, titre: str, message: str, echeance: date | None, aujourd_hui: date,
+            niveau: str | None = None) -> dict:
+    jours = (echeance - aujourd_hui).days if echeance else None
+    return {"type": type_, "titre": titre, "message": message,
+            "date": echeance.isoformat() if echeance else None,
+            "date_fr": f"{echeance:%d/%m/%Y}" if echeance else None,
+            "jours": jours, "niveau": niveau or _niveau(jours)}
+
+
+def echeances(fiche: dict, aujourd_hui: date, horizon: int = HORIZON_ALERTES_JOURS) -> list[dict]:
+    """Toutes les échéances à signaler au syndic, de la plus proche à la plus lointaine.
+    niveau : urgent (≤ 30 j) | a_prevoir | depasse | info"""
+    res: list[dict] = []
+
+    # 1. Contrats : date limite pour résilier avant la reconduction
     for c in fiche.get("contrats", []):
-        mois = c["preavis_mois"]
         ech: date = c["echeance"]
-        # date limite de dénonciation = échéance - préavis (approximation au mois)
-        annee, mois_limite = ech.year, ech.month - mois
-        while mois_limite <= 0:
-            mois_limite += 12
-            annee -= 1
-        limite = date(annee, mois_limite, min(ech.day, 28))
+        if not c.get("tacite_reconduction"):
+            # Pas de reconduction : le contrat s'arrête seul, il faut le renouveler à temps
+            if 0 <= (ech - aujourd_hui).days <= horizon:
+                res.append(_alerte("contrat", c["objet"],
+                                   f"Se termine le {ech:%d/%m/%Y} sans reconduction : "
+                                   f"renouveler ou choisir un nouveau prestataire", ech, aujourd_hui))
+            continue
+        limite = ajouter_mois(ech, -c["preavis_mois"])
         jours = (limite - aujourd_hui).days
-        if 0 <= jours <= HORIZON_ALERTES_JOURS:
-            alertes.append(f"[Contrat] {c['objet']} : dénoncer avant le {limite:%d/%m/%Y} (dans {jours} j) si vous voulez changer")
-        elif jours < 0 and ech >= aujourd_hui:
-            alertes.append(f"[Contrat] {c['objet']} : délai de préavis dépassé, reconduction au {ech:%d/%m/%Y}")
+        if 0 <= jours <= horizon:
+            res.append(_alerte("contrat", c["objet"],
+                               f"Résilier avant le {limite:%d/%m/%Y} pour changer de prestataire "
+                               f"(préavis {c['preavis_mois']} mois, échéance le {ech:%d/%m/%Y})",
+                               limite, aujourd_hui))
+        elif jours < 0 <= (ech - aujourd_hui).days:
+            res.append(_alerte("contrat", c["objet"],
+                               f"Préavis dépassé : reconduction automatique le {ech:%d/%m/%Y}",
+                               ech, aujourd_hui, niveau="info"))
+
+    # 2. Diagnostics : manquants ou bientôt périmés
     for d in fiche.get("diagnostics", []):
         if d["realise_le"] is None:
-            alertes.append(f"[Diagnostic] {d['libelle']} : non réalisé, à inscrire à l'ordre du jour de l'AG")
-    return alertes
+            res.append(_alerte("diagnostic", d["libelle"],
+                               "Non réalisé : à inscrire à l'ordre du jour de la prochaine AG", None, aujourd_hui))
+        elif d.get("validite_ans"):
+            fin = ajouter_mois(d["realise_le"], 12 * d["validite_ans"])
+            if (fin - aujourd_hui).days <= horizon:
+                res.append(_alerte("diagnostic", d["libelle"], f"Validité jusqu'au {fin:%d/%m/%Y} : à renouveler",
+                                   fin, aujourd_hui))
+
+    # 3. AG annuelle : dans les N mois suivant la clôture de l'exercice
+    gouv = fiche["gouvernance"]
+    mm, jj = (int(x) for x in gouv["exercice"]["fin"].split("-"))
+    cloture = date(aujourd_hui.year, mm, jj)
+    if cloture > aujourd_hui:
+        cloture = date(aujourd_hui.year - 1, mm, jj)
+    limite_ag = ajouter_mois(cloture, gouv.get("ag_annuelle_delai_mois", 6))
+    jours_ag = (limite_ag - aujourd_hui).days
+    if 0 <= jours_ag <= horizon:
+        convoc = limite_ag - timedelta(days=DELAI_CONVOCATION_AG_JOURS)
+        res.append(_alerte("ag", "Assemblée générale annuelle",
+                           f"À tenir avant le {limite_ag:%d/%m/%Y} (exercice clos le {cloture:%d/%m/%Y}). "
+                           f"Convocations à envoyer au plus tard le {convoc:%d/%m/%Y}",
+                           limite_ag, aujourd_hui))
+
+    # 4. Mandat du syndic
+    fin_mandat: date = gouv["syndic"]["fin_mandat"]
+    if 0 <= (fin_mandat - aujourd_hui).days <= horizon:
+        res.append(_alerte("mandat", "Mandat du syndic",
+                           f"Se termine le {fin_mandat:%d/%m/%Y} : prévoir le renouvellement à l'ordre du jour de l'AG",
+                           fin_mandat, aujourd_hui))
+
+    ordre = {"urgent": 0, "a_prevoir": 1, "info": 2, "depasse": 3}
+    res.sort(key=lambda a: (ordre[a["niveau"]], a["date"] or "9999"))
+    return res
+
+
+def alertes_echeancier(fiche: dict, aujourd_hui: date) -> list[str]:
+    """Version texte, pour la ligne de commande."""
+    return [f"[{a['titre']}] {a['message']}" for a in echeances(fiche, aujourd_hui)]
 
 
 # --------------------------------------------------------------------------- #

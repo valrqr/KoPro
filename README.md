@@ -57,6 +57,15 @@ docker compose up -d --build
 
 En mode test, **tous les mails arrivent chez le syndic**, préfixés `[TEST]`. Aucun copropriétaire ne reçoit rien.
 
+### Les workflows disponibles
+
+| Workflow | Déclenchement | Ce qu'il fait |
+|---|---|---|
+| `appel_de_fonds.json` | Manuel, chaque trimestre | Génère les avis, attend la validation du syndic, puis les envoie |
+| `echeancier_hebdo.json` | Chaque lundi à 8h | Envoie à chaque syndic ses échéances : contrats à résilier, diagnostics, AG, fin de mandat |
+
+<p align="center"><img src="docs/apercu_echeancier.png" alt="Aperçu du mail d'échéancier" width="560"></p>
+
 ## Sans Docker (développement)
 
 ```bash
@@ -74,6 +83,8 @@ python tests/test_api.py                                             # les tests
 | GET | `/sante` | Le moteur répond-il ? (sans clé) |
 | GET | `/copros` | Fiches disponibles |
 | GET | `/copros/{copro}/fiche?au=AAAA-MM-JJ` | Validation de la fiche + alertes de l'échéancier |
+| GET | `/copros/{copro}/echeancier?au=&horizon=` | Échéances d'une copro : contrats, diagnostics, AG, mandat, avec niveau d'urgence |
+| GET | `/echeancier?au=&horizon=` | Échéances de toutes les copros (workflow hebdomadaire) |
 | POST | `/copros/{copro}/appels/{exercice}/T{n}?final=false` | Génère avis + récap, renvoie la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}` | Relit la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/recap` | PDF de la récap à signer |

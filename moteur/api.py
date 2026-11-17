@@ -8,6 +8,8 @@ Routes :
     GET  /sante                                             le moteur répond-il ?
     GET  /copros                                            fiches disponibles
     GET  /copros/{copro}/fiche                              validation + alertes de l'échéancier
+    GET  /copros/{copro}/echeancier?au=&horizon=            échéances structurées d'une copro
+    GET  /echeancier?au=&horizon=                           échéances de toutes les copros (workflow hebdo)
     POST /copros/{copro}/appels/{exercice}/T{n}?final=false génère avis + récap, renvoie la liste d'envoi
     GET  /copros/{copro}/appels/{exercice}/T{n}             relit la liste d'envoi déjà générée
     GET  /copros/{copro}/appels/{exercice}/T{n}/recap       PDF de la récap à valider
@@ -33,7 +35,7 @@ from fastapi.security import APIKeyHeader
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "core"))
 from avis_appel import FicheInvalide, dossier_appel, generer_appel  # noqa: E402
-from fiche_copro import alertes_echeancier, charger_fiche, valider  # noqa: E402
+from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche, echeances, valider  # noqa: E402
 
 DOSSIER_CONFIG = Path(os.getenv("MOTEUR_CONFIG_DIR", RACINE / "config"))
 DOSSIER_SORTIE = Path(os.getenv("MOTEUR_OUT_DIR", RACINE / "out"))
@@ -92,6 +94,37 @@ def controler_fiche(copro: str = Copro, au: date | None = Query(None, descriptio
     rapport = valider(fiche)
     return {"copro": copro, "valide": rapport.ok, "erreurs": rapport.erreurs,
             "alertes": alertes_echeancier(fiche, au or date.today())}
+
+
+def rapport_echeancier(copro: str, fiche: dict, au: date, horizon: int) -> dict:
+    gouv = fiche["gouvernance"]
+    sid = gouv["syndic"]["coproprietaire_id"]
+    syndic = next((c for c in fiche["coproprietaires"] if c["id"] == sid), {})
+    alertes = echeances(fiche, au, horizon)
+    return {
+        "copro": copro, "copropriete": fiche["copropriete"]["nom"],
+        "au": au.isoformat(), "au_fr": f"{au:%d/%m/%Y}", "horizon_jours": horizon,
+        "syndic": {"nom": syndic.get("nom"), "email": syndic.get("email")},
+        "nb_alertes": len(alertes),
+        "nb_urgentes": sum(1 for a in alertes if a["niveau"] == "urgent"),
+        "alertes": alertes,
+    }
+
+
+Horizon = Query(HORIZON_ALERTES_JOURS, ge=1, le=730, description="Nombre de jours à anticiper")
+
+
+@app.get("/copros/{copro}/echeancier", dependencies=[Depends(verifier_cle)])
+def echeancier_copro(copro: str = Copro, au: date | None = Query(None), horizon: int = Horizon) -> dict:
+    return rapport_echeancier(copro, fiche_de(copro), au or date.today(), horizon)
+
+
+@app.get("/echeancier", dependencies=[Depends(verifier_cle)])
+def echeancier_global(au: date | None = Query(None), horizon: int = Horizon) -> dict:
+    """Une entrée par copro, pour le récapitulatif hebdomadaire envoyé à chaque syndic."""
+    jour = au or date.today()
+    rapports = [rapport_echeancier(c, fiche_de(c), jour, horizon) for c in lister_copros()]
+    return {"au": jour.isoformat(), "nb_copros": len(rapports), "rapports": rapports}
 
 
 @app.post("/copros/{copro}/appels/{exercice}/T{trimestre}", dependencies=[Depends(verifier_cle)])

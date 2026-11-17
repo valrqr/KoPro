@@ -1,0 +1,286 @@
+{
+  "name": "KoPro – Échéancier hebdomadaire",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "a61429de-8783-480e-8aa2-0af96bd98475",
+      "name": "Chaque lundi à 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c82c7eba-3f86-4d88-a537-2f7196347b2c",
+      "name": "Lancement manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "58cc7e28-77b1-4506-b9aa-ab153185af10",
+              "name": "moteur_url",
+              "value": "http://moteur:8000",
+              "type": "string"
+            },
+            {
+              "id": "4356a20f-aebb-4b5a-b35e-947b8121338f",
+              "name": "email_expediteur",
+              "value": "mimosas@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "afe830d1-0ee3-4527-8c61-baa61273bb6b",
+              "name": "email_test",
+              "value": "syndic@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "7bf26591-db5a-4512-ab1d-c5fad45df4e4",
+              "name": "horizon_jours",
+              "value": 120,
+              "type": "number"
+            },
+            {
+              "id": "9c069150-ec63-45e0-b42e-d779ccfe0ef0",
+              "name": "au",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "230d3152-4a06-4754-b556-56f004b23fb1",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.moteur_url }}/echeancier?horizon={{ $('Config').first().json.horizon_jours }}{{ $('Config').first().json.au ? '&au=' + $('Config').first().json.au : '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "48e9150e-5a18-4cf8-b930-dc183e0d8f68",
+      "name": "Échéances de toutes les copros",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "rapports",
+        "options": {}
+      },
+      "id": "b47c0ff0-acc2-43d5-9113-9ae27b16ec29",
+      "name": "Une copro par ligne",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "4de0efe4-22d8-4f2c-82d9-7736a16a0616",
+              "leftValue": "={{ $json.nb_alertes }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e9e6f66c-96c8-43ec-90e8-6b2dc1ec3bf1",
+      "name": "Des échéances ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_test || $json.syndic.email }}",
+        "subject": "={{ $('Config').first().json.email_test ? '[TEST] ' : '' }}[KoPro] {{ $json.copropriete }} : {{ $json.nb_alertes }} échéance(s){{ $json.nb_urgentes > 0 ? ', dont ' + $json.nb_urgentes + ' urgente(s)' : '' }}",
+        "emailFormat": "html",
+        "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:680px;color:#1E1E1E\"><h2 style=\"margin:0 0 4px\">{{ $json.copropriete }}</h2><p style=\"margin:0 0 16px;color:#666\">Échéancier au {{ $json.au_fr }} · horizon {{ $json.horizon_jours }} jours</p>{{ $json.nb_urgentes > 0 ? '<p style=\"background:#FDEDEC;border-left:4px solid #C0392B;padding:10px 12px;margin:0 0 16px\"><b>' + $json.nb_urgentes + ' échéance(s) urgente(s)</b> dans les 30 prochains jours.</p>' : '' }}<table style=\"border-collapse:collapse;width:100%;font-size:14px\"><tr style=\"text-align:left;color:#666\"><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Niveau</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Date</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Échéance</th></tr>{{ $json.alertes.map(a => { const st = {urgent: ['Urgent', '#C0392B'], a_prevoir: ['À prévoir', '#B9770E'], info: ['Info', '#5D6D7E'], depasse: ['Dépassé', '#5D6D7E']}[a.niveau] || [a.niveau, '#5D6D7E']; return '<tr>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><span style=\"background:' + st[1] + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;white-space:nowrap\">' + st[0] + '</span></td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB;white-space:nowrap\">' + (a.date_fr || '—') + (a.jours !== null && a.jours >= 0 ? '<br><span style=\"color:#888;font-size:12px\">dans ' + a.jours + ' j</span>' : '') + '</td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><b>' + a.titre + '</b><br><span style=\"color:#444\">' + a.message + '</span></td>' + '</tr>'; }).join('') }}</table><p style=\"margin-top:20px;font-size:12px;color:#888\">Préparé par l'assistant KoPro. Vérifiez chaque échéance avant d'agir.</p></div>",
+        "options": {}
+      },
+      "id": "a8e5cb73-5583-4055-86e4-e09603a99186",
+      "name": "Envoyer l'échéancier au syndic",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "9b6af993-dd54-4d9c-a671-9c7a0fa5e43d",
+      "name": "Rien à signaler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Échéancier hebdomadaire KoPro\nChaque lundi à 8h, le syndic de chaque copro reçoit ses échéances : contrats, diagnostics, AG, mandat.\n\n- **email_test** rempli : tous les mails arrivent à cette adresse. Vide : chaque syndic reçoit le sien\n- **au** vide = aujourd'hui. Pour tester, mets une date, ex. 2027-06-01\n- Pense à **activer** le workflow (interrupteur en haut à droite)",
+        "height": 220,
+        "width": 460
+      },
+      "id": "3f514ec6-3e4c-4745-b590-ed7e780ebaa1",
+      "name": "Mode d'emploi",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -40
+      ]
+    }
+  ],
+  "connections": {
+    "Chaque lundi à 8h": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lancement manuel": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Échéances de toutes les copros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Échéances de toutes les copros": {
+      "main": [
+        [
+          {
+            "node": "Une copro par ligne",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une copro par ligne": {
+      "main": [
+        [
+          {
+            "node": "Des échéances ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Des échéances ?": {
+      "main": [
+        [
+          {
+            "node": "Envoyer l'échéancier au syndic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rien à signaler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false
+}
