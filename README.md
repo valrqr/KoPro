@@ -1,4 +1,6 @@
-# Syndic IA
+# KoPro
+
+> **KoPro, l'outil qui va mettre votre vieux syndic KO** 🥊
 
 Un assistant open source pour les syndics **bénévoles et coopératifs** de copropriétés de moins de 50 lots.
 
