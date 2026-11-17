@@ -3,6 +3,7 @@
 
 # Documents générés (contiennent des données personnelles)
 out/
+data/
 
 # Fiches de vraies copros : seule la démo fictive est versionnée
 config/*.yaml

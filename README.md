@@ -85,10 +85,26 @@ python tests/test_api.py                                             # les tests
 | GET | `/copros/{copro}/fiche?au=AAAA-MM-JJ` | Validation de la fiche + alertes de l'échéancier |
 | GET | `/copros/{copro}/echeancier?au=&horizon=` | Échéances d'une copro : contrats, diagnostics, AG, mandat, avec niveau d'urgence |
 | GET | `/echeancier?au=&horizon=` | Échéances de toutes les copros (workflow hebdomadaire) |
+| GET | `/copros/{copro}/travaux` | Dossiers de travaux |
+| POST | `/copros/{copro}/travaux` | Créer un dossier (titre, nature, urgence, clé) |
+| GET | `/copros/{copro}/travaux/{id}` | Dossier + comparatif des devis + qui décide |
+| POST | `/copros/{copro}/travaux/{id}/devis` | Ajouter un devis (formulaire + PDF) |
+| GET | `/copros/{copro}/travaux/{id}/comparatif.pdf` | Comparatif PDF à joindre à une convocation |
 | POST | `/copros/{copro}/appels/{exercice}/T{n}?final=false` | Génère avis + récap, renvoie la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}` | Relit la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/recap` | PDF de la récap à signer |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/avis/{id}` | PDF d'un avis |
+
+## Travaux et devis
+
+Pour une intervention non prévue, le syndic ouvre un **dossier de travaux** et y dépose plusieurs devis en PDF. KoPro :
+
+- **compare les devis** : montants TTC, écarts avec le moins cher, délais, devis expirés ou incomplets ;
+- **calcule la quote-part de chaque copropriétaire** pour chaque devis, au centime, selon la clé de répartition ;
+- **indique qui peut décider** (syndic seul, urgence, conseil syndical par délégation, ou AG) à partir des seuils votés en AG et inscrits dans la fiche ;
+- **produit un comparatif PDF** à joindre à la convocation ou à diffuser aux copropriétaires.
+
+> ⚖️ En copropriété, la plupart des travaux se décident en assemblée générale. L'aiguillage de KoPro est indicatif et ne remplace pas l'avis d'un juriste ou de l'ADIL. Le vote (sondage consultatif, conseil syndical, dépouillement d'AG) est la prochaine brique.
 
 ## Données personnelles
 

@@ -144,6 +144,15 @@ fonds_travaux:
   cle: generales
   cotisation_annuelle: 1200
 
+# Seuils votés en AG (montants TTC, en euros). Ils servent à aiguiller chaque
+# dossier de travaux vers le bon circuit de décision.
+seuils:
+  consultation_conseil_syndical: 1500   # au-delà, le conseil syndical doit être consulté
+  mise_en_concurrence: 3000             # au-delà, plusieurs devis sont obligatoires
+  delegation_conseil_syndical:          # délégation de pouvoirs (art. 21-1 loi 1965)
+    active: false                       # true si l'AG l'a votée
+    plafond_par_depense: null           # montant maximum par dépense, fixé par l'AG
+
 # -----------------------------------------------------------------------------
 # 9. Appels de fonds
 # -----------------------------------------------------------------------------

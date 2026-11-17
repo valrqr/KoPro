@@ -116,6 +116,19 @@ def valider(fiche: dict) -> Rapport:
     if cotisation < minimum:
         r.erreurs.append(f"Fonds de travaux : {cotisation} € < minimum légal {minimum} € (5 % de {budget} €)")
 
+    # 6. Seuils de décision (facultatifs, mais cohérents s'ils sont présents)
+    seuils = fiche.get("seuils") or {}
+    for nom in ("consultation_conseil_syndical", "mise_en_concurrence"):
+        v = seuils.get(nom)
+        if v is not None and (not isinstance(v, (int, float)) or v < 0):
+            r.erreurs.append(f"Seuil « {nom} » invalide : {v!r} (montant positif attendu)")
+    deleg = seuils.get("delegation_conseil_syndical") or {}
+    if deleg.get("active"):
+        if len(gouv.get("conseil_syndical", [])) < 3:
+            r.erreurs.append("Délégation au conseil syndical : il faut au moins 3 membres")
+        if not deleg.get("plafond_par_depense"):
+            r.erreurs.append("Délégation au conseil syndical : le plafond par dépense voté en AG est obligatoire")
+
     return r
 
 

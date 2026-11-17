@@ -15,7 +15,7 @@ COPY core/ core/
 COPY moteur/ moteur/
 
 # Utilisateur sans droits root
-RUN useradd --create-home --uid 1000 moteur && mkdir -p /app/out && chown -R moteur /app
+RUN useradd --create-home --uid 1000 moteur && mkdir -p /app/out /app/data && chown -R moteur /app
 USER moteur
 
 EXPOSE 8000
