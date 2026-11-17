@@ -18,6 +18,8 @@ services:
       MOTEUR_CONFIG_DIR: /app/config
       MOTEUR_OUT_DIR: /app/out
       MOTEUR_DATA_DIR: /app/data
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-medium-latest}
     volumes:
       - ./config:/app/config:ro     # fiches des copros, en lecture seule
       - ./out:/app/out              # avis et récaps générés
