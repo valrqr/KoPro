@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" alt="Logo KoPro" width="200">
+</p>
+
 # KoPro
 
 > **KoPro, l'outil qui va mettre votre vieux syndic KO** 🥊
