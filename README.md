@@ -188,6 +188,10 @@ KoPro est développé avec l'aide d'une IA (Claude, d'Anthropic), qui a écrit u
 Mon rôle : définir le besoin et le périmètre, choisir le cadre juridique et l'architecture,
 tester, déployer et faire évoluer l'outil. Chaque brique est relue, testée et documentée avant publication.
 
+## Contribuer
+
+Les signalements de bugs, d'erreurs juridiques et les idées sont les bienvenus. Les contributions de code sont acceptées sous un accord de contribution : voir [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Licence
 
-AGPL-3.0.
+AGPL-3.0. L'auteur se réserve la possibilité de proposer aussi KoPro sous d'autres conditions ; la version AGPL reste disponible.
