@@ -111,6 +111,14 @@ python tests/test_api.py                                             # les tests
 | GET | `/copros/{copro}/ag/{ag}/feuille-presence.pdf` | Feuille de présence à faire émarger |
 | POST | `/copros/{copro}/ag/{ag}/depouillement` | Votes en séance et par correspondance → résultat de chaque résolution |
 | GET | `/copros/{copro}/ag/{ag}/pv.pdf` | Brouillon de procès-verbal, à relire et faire signer |
+| GET | `/copros/{copro}/communication` | Canal de chaque copropriétaire (courrier ou mail), grands caractères, aidants |
+| GET | `/copros/{copro}/travaux/{id}/sondages/{s}/bulletins/{cp}` | Bulletin de sondage papier pré-rempli |
+| POST | `/copros/{copro}/travaux/{id}/sondages/{s}/bulletins/{cp}` | Saisie d'un bulletin papier reçu, avec sa trace |
+| GET | `/copros/{copro}/affiche.pdf?format=A4\|A3` | Affiche du hall, sans aucune donnée personnelle |
+| POST | `/copros/{copro}/appels/{exercice}/T{n}/lot-postal` | PDF prêt à imprimer (enveloppes à fenêtre) et manifeste des recommandés |
+| GET / POST / PUT | `/copros/{copro}/envois` | Registre des envois : recommandés, dates de notification |
+| GET | `/copros/{copro}/ag/{ag}/convocations` | Chaque copropriétaire a-t-il été convoqué dans les délais ? |
+| GET | `/copros/{copro}/coproprietaires/{id}/mandat-sepa.pdf` | Mandat de prélèvement SEPA papier pré-rempli |
 | POST | `/copros/{copro}/appels/{exercice}/T{n}?final=false` | Génère avis + récap, renvoie la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}` | Relit la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/recap` | PDF de la récap à signer |
@@ -201,6 +209,23 @@ Mitoyen prépare toute l'assemblée générale, du calendrier au procès-verbal,
 <p align="center"><img src="docs/apercu_formulaire_vote.png" alt="Formulaire de vote par correspondance pré-rempli" width="420"></p>
 
 > Le formulaire reprend la structure et les mentions du modèle officiel : avant un usage réel, comparez-le à l'annexe de l'arrêté du 2 juillet 2020 sur Légifrance. Une case laissée vide n'est pas comptée et signalée au bureau, la loi ne disant pas comment la traiter. Le procès-verbal signé reste la seule référence.
+
+## Le pack papier
+
+Mitoyen ne laisse personne de côté. **Le papier n'est pas un mode dégradé** : un copropriétaire qui n'utilise pas, ou peu, le numérique reçoit la même information, au même moment, avec les mêmes droits. C'est le syndic, aidé de Mitoyen, qui fait la part numérique à sa place.
+
+| Besoin | Ce que fait Mitoyen |
+|---|---|
+| **Recevoir par courrier** | Depuis le décret du 22 décembre 2025, le mail est la règle, mais chacun peut demander le courrier à tout moment. Mitoyen garde la trace de la demande, calcule sa prise d'effet et rappelle ce droit sur chaque avis d'appel de fonds et chaque formulaire de vote |
+| **Lire sans peine** | Grands caractères sur demande, un encadré **« Ce que vous devez faire »** en une phrase en tête de l'avis, et un petit lexique (tantièmes, quote-part, fonds de travaux…) |
+| **Payer sans informatique** | Un talon à découper et à joindre au chèque, ou un mandat de prélèvement papier : une signature, puis plus rien à faire |
+| **Donner son avis** | Un bulletin de sondage pré-rempli (devis, quote-part, résumé) à déposer chez le syndic, qui le saisit avec la mention « d'après bulletin papier » |
+| **Savoir ce qui se passe** | Une affiche mensuelle pour le hall, en A4 ou A3 : prochaine AG, travaux, décisions, contact du syndic. Aucun nom ni montant individuel |
+| **Être bien convoqué** | Un registre des envois (recommandés, dates de première présentation) et un contrôle qui signale les convocations manquantes ou tardives avant l'AG |
+| **Être aidé par un proche** | Avec l'accord écrit et daté du copropriétaire, une copie des documents à un proche, sans jamais de lien de vote |
+| **Poster sans y passer la soirée** | Un PDF prêt à imprimer en recto-verso pour enveloppes à fenêtre, avec le manifeste des recommandés, utilisable aussi avec un service d'envoi en ligne |
+
+> Les règles de notification ont changé récemment : vérifiez-les auprès de l'ADIL avant un usage réel.
 
 ## Données personnelles
 

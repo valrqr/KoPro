@@ -116,6 +116,12 @@ def valider(fiche: dict) -> Rapport:
     if cotisation < minimum:
         r.erreurs.append(f"Fonds de travaux : {cotisation} € < minimum légal {minimum} € (5 % de {budget} €)")
 
+    # 5 ter. Accessibilité et papier : courrier, grands caractères, aidant, paiement
+    import papier
+    err_p, alertes_p = papier.valider_papier(fiche)
+    r.erreurs += err_p
+    r.alertes += alertes_p
+
     # 5 bis. Plan pluriannuel de travaux : cohérence, et 2,5 % des travaux une fois adopté
     import plan_travaux
     erreurs_plan = plan_travaux.valider_plan(fiche)

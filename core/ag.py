@@ -518,7 +518,8 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
               "• Art. 14-1 : le formulaire n'est pas pris en compte si le copropriétaire, ou son mandataire, est "
               "présent à l'assemblée, quelle que soit la date du formulaire.<br/>"
               "• Art. 17 : le procès-verbal mentionne les noms et le nombre de voix des opposants, des "
-              "abstentionnistes et des copropriétaires assimilés à des défaillants.")
+              "abstentionnistes et des copropriétaires assimilés à des défaillants.<br/><br/>"
+              + __import__("papier").MENTION_PAPIER)
     encadre = Table([[Paragraph(rappel, S["petit"])]], colWidths=[174 * mm])
     encadre.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), FOND), ("LEFTPADDING", (0, 0), (-1, -1), 8),
                                  ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))

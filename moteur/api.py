@@ -43,6 +43,16 @@ Routes :
     GET  /copros/{copro}/ag/{ag}/feuille-presence.pdf       feuille de présence à faire émarger
     POST /copros/{copro}/ag/{ag}/depouillement              votes en séance + par correspondance → résultats
     GET  /copros/{copro}/ag/{ag}/pv.pdf                     brouillon de procès-verbal (filigrane PROJET)
+    GET  /copros/{copro}/communication?au=                  canal de chaque copropriétaire (courrier, mail), aidants
+    GET  /copros/{copro}/coproprietaires/{id}/mandat-sepa.pdf   mandat de prélèvement papier pré-rempli
+    GET  /copros/{copro}/travaux/{id}/sondages/{s}/bulletins/{cp}   bulletin de sondage papier (PDF)
+    POST /copros/{copro}/travaux/{id}/sondages/{s}/bulletins/{cp}   saisie d'un bulletin papier reçu
+    GET  /copros/{copro}/affiche.pdf?format=A4|A3&au=       affiche du hall, sans donnée personnelle
+    POST /copros/{copro}/appels/{exercice}/T{n}/lot-postal  PDF prêt à imprimer + manifeste des courriers
+    GET  /copros/{copro}/envois?document=                   registre des envois (recommandés, notifications)
+    POST /copros/{copro}/envois                             inscrit un envoi au registre
+    PUT  /copros/{copro}/envois/{id}                        date de première présentation, statut, n° de recommandé
+    GET  /copros/{copro}/ag/{ag}/convocations               chaque copropriétaire a-t-il été convoqué à temps ?
     GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
@@ -69,6 +79,7 @@ sys.path.insert(0, str(RACINE / "core"))
 from avis_appel import FicheInvalide, dossier_appel, generer_appel  # noqa: E402
 from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche, echeances, valider  # noqa: E402
 import ag as assemblee  # noqa: E402
+import papier  # noqa: E402
 import plan_travaux  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
@@ -87,6 +98,7 @@ SLUG = r"^[a-z0-9][a-z0-9-]{0,40}$"
 ID_COPRO = r"^[A-Za-z0-9_-]{1,20}$"
 ID_DOSSIER = r"^\d{4}-\d{3}-[a-z0-9-]{1,40}$"
 ID_DEVIS = r"^D\d{1,3}$"
+ID_SONDAGE = r"^S\d{1,3}$"
 
 app = FastAPI(title="Moteur syndic IA", version="0.1.0",
               description="Prépare les documents du syndic. Le syndic valide, n8n envoie.")
@@ -603,6 +615,145 @@ def pdf_pv(copro: str = Copro, ag_id: str = AgId) -> FileResponse:
 
 
 # --------------------------------------------------------------------------- #
+# Pack papier : courrier, grands caractères, bulletins, affiche, registre des envois
+# --------------------------------------------------------------------------- #
+def _pdf(chemin: Path) -> FileResponse:
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+@app.get("/copros/{copro}/communication", dependencies=[Depends(verifier_cle)])
+def communication(copro: str = Copro, au: date | None = Query(None)) -> dict:
+    fiche = fiche_de(copro)
+    jour = au or date.today()
+    lignes = []
+    for c in sorted(fiche["coproprietaires"], key=lambda c: c["nom"]):
+        k = papier.canal(fiche, c["id"], jour)
+        lignes.append({"id": c["id"], "nom": c["nom"], **k, "grands_caracteres": bool(c.get("grands_caracteres")),
+                       "paiement": c.get("paiement", "virement"),
+                       "adresse_postale": papier.adresse_postale(fiche, c["id"]) if k["canal"] == "courrier" else None,
+                       "aidant": (papier.copie_aidant(fiche, c["id"]) or {}).get("nom")})
+    return {"au": jour.isoformat(), "nb_courrier": sum(1 for l in lignes if l["canal"] == "courrier"),
+            "coproprietaires": lignes, "mention_obligatoire": papier.MENTION_PAPIER}
+
+
+@app.get("/copros/{copro}/coproprietaires/{cid}/mandat-sepa.pdf", dependencies=[Depends(verifier_cle)])
+def mandat_sepa(copro: str = Copro, cid: str = Coproprietaire) -> FileResponse:
+    fiche = fiche_de(copro)
+    sortie = DOSSIER_SORTIE / copro / "papier"
+    sortie.mkdir(parents=True, exist_ok=True)
+    try:
+        return _pdf(papier.generer_mandat_sepa(fiche, cid, sortie / f"mandat_sepa_{cid}.pdf"))
+    except papier.PapierInvalide as e:
+        raise HTTPException(404 if "inconnu" in str(e) else 422, str(e))
+
+
+@app.get("/copros/{copro}/travaux/{dossier_id}/sondages/{sid}/bulletins/{cid}", dependencies=[Depends(verifier_cle)])
+def bulletin_papier(copro: str = Copro, dossier_id: str = Dossier, sid: str = PathParam(..., pattern=ID_SONDAGE),
+                    cid: str = Coproprietaire) -> FileResponse:
+    _, d = dossier_de(copro, dossier_id)
+    fiche, s = fiche_de(copro), _sondage_de(d, sid)
+    synth = travaux.synthese(fiche, d)
+    sortie = DOSSIER_SORTIE / copro / "papier" / dossier_id
+    sortie.mkdir(parents=True, exist_ok=True)
+    try:
+        return _pdf(papier.generer_bulletin(fiche, d, s, cid, synth["comparatif"], synth["resume_ia"],
+                                           sortie / f"bulletin_{sid}_{cid}.pdf"))
+    except papier.PapierInvalide as e:
+        raise HTTPException(404, str(e))
+
+
+class BulletinRecu(BaseModel):
+    choix: str = Field(..., description="Identifiant du devis (D1…), aucun ou sans_avis")
+    recu_le: datetime = Field(..., description="Date et heure de réception du bulletin par le syndic")
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/sondages/{sid}/bulletins/{cid}", dependencies=[Depends(verifier_cle)])
+def saisir_bulletin(corps: BulletinRecu, copro: str = Copro, dossier_id: str = Dossier,
+                    sid: str = PathParam(..., pattern=ID_SONDAGE), cid: str = Coproprietaire) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    s = _sondage_de(d, sid)
+    try:
+        res = papier.saisir_bulletin(s, cid, corps.choix, corps.recu_le.replace(tzinfo=None))
+    except papier.PapierInvalide as e:
+        raise HTTPException(422, str(e))
+    travaux.sauver_dossier(chemin, d)
+    return res
+
+
+@app.get("/copros/{copro}/affiche.pdf", dependencies=[Depends(verifier_cle)])
+def affiche(copro: str = Copro, format: str = Query("A4", pattern="^A[34]$"), au: date | None = Query(None)) -> FileResponse:
+    fiche = fiche_de(copro)
+    jour = au or date.today()
+    sortie = DOSSIER_SORTIE / copro / "papier"
+    sortie.mkdir(parents=True, exist_ok=True)
+    return _pdf(papier.generer_affiche(fiche, DOSSIER_DATA, copro, sortie / f"affiche_{jour:%Y-%m}_{format}.pdf",
+                                       jour, format))
+
+
+@app.post("/copros/{copro}/appels/{exercice}/T{trimestre}/lot-postal", dependencies=[Depends(verifier_cle)])
+def lot_postal(copro: str = Copro, exercice: int = PathParam(...), trimestre: int = Trimestre) -> dict:
+    fiche = fiche_de(copro)
+    dossier = dossier_existant(copro, exercice, trimestre)
+    envoi = json.loads((dossier / "envoi.json").read_text(encoding="utf-8"))
+    if envoi["statut"] != "valide":
+        raise HTTPException(409, "Les avis sont encore en projet : générez la version finale avant de les poster")
+    courriers = [{"coproprietaire": a["coproprietaire"], "fichiers": [dossier / a["fichier"]]}
+                 for a in envoi["avis"] if a["envoi"] == "courrier"]
+    if not courriers:
+        return {"nb_courriers": 0, "note": "Aucun copropriétaire ne reçoit ses documents par courrier."}
+    return papier.preparer_lot(fiche, courriers, dossier / "lot_postal", f"Appel de fonds {exercice}, appel {trimestre}",
+                               f"appel:{exercice}-T{trimestre}", DOSSIER_DATA, copro)
+
+
+class NouvelEnvoi(BaseModel):
+    coproprietaire: str = Field(..., pattern=ID_COPROPRIETAIRE)
+    document: str = Field(..., min_length=3, max_length=80, examples=["ag:2027-04-17", "appel:2027-T1"])
+    canal: str = Field(..., description="lrar | lre | main_propre | courrier_simple | email")
+    envoye_le: date
+    numero: str = Field("", max_length=40, description="Numéro de recommandé")
+    notifie_le: date | None = Field(None, description="Première présentation, ou remise contre émargement")
+    note: str = Field("", max_length=300)
+
+
+class MajEnvoi(BaseModel):
+    statut: str | None = Field(None, description="prepare | envoye | notifie | retourne | refuse")
+    notifie_le: date | None = None
+    numero: str | None = Field(None, max_length=40)
+    note: str | None = Field(None, max_length=300)
+
+
+@app.get("/copros/{copro}/envois", dependencies=[Depends(verifier_cle)])
+def registre_envois(copro: str = Copro, document: str | None = Query(None, max_length=80)) -> list[dict]:
+    fiche_de(copro)
+    return [e for e in papier.charger_registre(DOSSIER_DATA, copro) if not document or e["document"] == document]
+
+
+@app.post("/copros/{copro}/envois", status_code=201, dependencies=[Depends(verifier_cle)])
+def nouvel_envoi(corps: NouvelEnvoi, copro: str = Copro) -> dict:
+    try:
+        return papier.enregistrer_envoi(DOSSIER_DATA, copro, fiche_de(copro), corps.coproprietaire, corps.document,
+                                        corps.canal, corps.envoye_le, corps.numero, corps.notifie_le, corps.note)
+    except papier.PapierInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+@app.put("/copros/{copro}/envois/{eid}", dependencies=[Depends(verifier_cle)])
+def maj_envoi(corps: MajEnvoi, copro: str = Copro, eid: str = PathParam(..., pattern=r"^E\d{4}$")) -> dict:
+    fiche_de(copro)
+    try:
+        return papier.mettre_a_jour_envoi(DOSSIER_DATA, copro, eid, corps.statut, corps.notifie_le, corps.numero,
+                                          corps.note)
+    except papier.PapierInvalide as e:
+        raise HTTPException(404 if "inconnu" in str(e).lower() and "envoi" in str(e).lower() else 422, str(e))
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/convocations", dependencies=[Depends(verifier_cle)])
+def controle_convocations(copro: str = Copro, ag_id: str = AgId) -> dict:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    return papier.controle_convocations(fiche, a, papier.charger_registre(DOSSIER_DATA, copro))
+
+
+# --------------------------------------------------------------------------- #
 # Votes
 # --------------------------------------------------------------------------- #
 class OuvertureSondage(BaseModel):
@@ -635,8 +786,11 @@ def ouvrir_sondage(corps: OuvertureSondage, copro: str = Copro, dossier_id: str 
     copros = {c["id"]: c for c in fiche["coproprietaires"]}
     return {"sondage": sondage["id"], "clos_le": sondage["clos_le"], "options": options,
             "invitations": [{"coproprietaire": cid, "nom": copros[cid]["nom"], "email": copros[cid].get("email"),
-                             "envoi": copros[cid]["envoi"],
-                             "lien": f"{URL_PUBLIQUE}/vote/{copro}/{dossier_id}/{sondage['id']}/{j}"}
+                             "envoi": papier.canal(fiche, cid)["canal"],
+                             "lien": f"{URL_PUBLIQUE}/vote/{copro}/{dossier_id}/{sondage['id']}/{j}",
+                             **({"bulletin_papier": f"/copros/{copro}/travaux/{dossier_id}/sondages/{sondage['id']}"
+                                                    f"/bulletins/{cid}"}
+                                if papier.canal(fiche, cid)["canal"] == "courrier" else {})}
                             for cid, j in jetons.items()],
             "avertissement": "Les liens ne sont affichés qu'une fois : ils ne sont pas conservés en clair."}
 

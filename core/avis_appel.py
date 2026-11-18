@@ -54,6 +54,20 @@ S = {
 }
 
 
+def styles(grand: bool = False) -> dict:
+    """Styles de texte. grand=True : version « grands caractères » (14 pt pour le texte courant),
+    pour les copropriétaires qui l'ont demandée."""
+    if not grand:
+        return S
+    return {
+        "titre": ParagraphStyle("titre_g", parent=S["titre"], fontSize=24, leading=29),
+        "sous": ParagraphStyle("sous_g", parent=S["sous"], fontSize=14, leading=18),
+        "txt": ParagraphStyle("txt_g", parent=S["txt"], fontSize=14, leading=19),
+        "petit": ParagraphStyle("petit_g", parent=S["petit"], fontSize=12, leading=16),
+        "droite": ParagraphStyle("droite_g", parent=S["droite"], fontSize=14, leading=19),
+    }
+
+
 def euros(m: Decimal) -> str:
     """1234.5 -> '1 234,50 €' (format français)."""
     s = f"{m:,.2f}".replace(",", " ").replace(".", ",")
@@ -90,11 +104,11 @@ def tampon(projet: bool, pied: str):
     return _dessiner
 
 
-def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1):
+def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1, grand: bool = False):
     t = Table(donnees, colWidths=largeurs, repeatRows=1)
     style = [
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.5),
-        ("FONT", (0, 1), (-1, -1), "Helvetica", 9),
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 12 if grand else 8.5),
+        ("FONT", (0, 1), (-1, -1), "Helvetica", 13 if grand else 9),
         ("TEXTCOLOR", (0, 0), (-1, 0), GRIS),
         ("TEXTCOLOR", (0, 1), (-1, -1), ENCRE),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, ENCRE),
@@ -106,7 +120,7 @@ def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1
     ]
     if lignes_total:
         style += [
-            ("FONT", (0, -lignes_total), (-1, -1), "Helvetica-Bold", 10),
+            ("FONT", (0, -lignes_total), (-1, -1), "Helvetica-Bold", 14 if grand else 10),
             ("LINEABOVE", (0, -lignes_total), (-1, -lignes_total), 0.8, ENCRE),
             ("BACKGROUND", (0, -lignes_total), (-1, -1), FOND),
         ]
@@ -130,6 +144,7 @@ def dates_appel(fiche: dict, trimestre: int) -> tuple[date, date]:
 # Un avis par copropriétaire
 # --------------------------------------------------------------------------- #
 def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path, Decimal]:
+    import papier
     ident = fiche["copropriete"]
     copro = next(c for c in fiche["coproprietaires"] if c["id"] == cid)
     syndic_id = fiche["gouvernance"]["syndic"]["coproprietaire_id"]
@@ -142,6 +157,12 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
     rubs = rubriques(fiche)
     cles = fiche["cles_repartition"]
     lots = sorted((l for l in fiche["lots"] if l["proprietaire"] == cid), key=lambda l: l["numero"])
+    grand = bool(copro.get("grands_caracteres"))
+    st = styles(grand)
+    canal_avis = papier.canal(fiche, cid, emission)["canal"]
+    paiement_mode = copro.get("paiement", "virement")
+    # Le chèque est proposé à qui l'a choisi, et à tout copropriétaire qui reçoit ses documents par courrier
+    cheque_possible = paiement_mode == "cheque" or (paiement_mode == "virement" and canal_avis == "courrier")
 
     chemin = dossier / f"avis_{cid}.pdf"
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
@@ -153,9 +174,9 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
     emetteur = Paragraph(
         f"<b>{ident['nom']}</b><br/>{ident['adresse']}<br/>"
         f"Syndic {'coopératif' if mode == 'cooperatif' else 'bénévole'} : {syndic['nom']}<br/>"
-        f"Immatriculation : {ident['immatriculation_registre']}", S["txt"])
+        f"Immatriculation : {ident['immatriculation_registre']}", st["txt"])
     destinataire = Paragraph(f"<b>{copro['nom']}</b><br/>Copropriétaire {cid}<br/>"
-                             f"Envoi : {copro['envoi']}", S["txt"])
+                             f"Envoi : {canal_avis}", st["txt"])
     entete = Table([[emetteur, destinataire]], colWidths=[100 * mm, 74 * mm])
     entete.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                                 ("BOX", (1, 0), (1, 0), 0.5, FILET),
@@ -163,10 +184,12 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
                                 ("BOTTOMPADDING", (1, 0), (1, 0), 6)]))
     h += [entete, Spacer(1, 10 * mm)]
 
-    h.append(Paragraph("Avis d'appel de fonds", S["titre"]))
+    h.append(Paragraph("Avis d'appel de fonds", st["titre"]))
     h.append(Paragraph(f"Exercice {exercice} · appel {trimestre} sur {nb_appels} · "
-                       f"émis le {fr(emission)} · <b>exigible le {fr(exigibilite)}</b>", S["sous"]))
-    h.append(Spacer(1, 7 * mm))
+                       f"émis le {fr(emission)} · <b>exigible le {fr(exigibilite)}</b>", st["sous"]))
+    h.append(Spacer(1, 5 * mm))
+    MARQUE_TOTAL = "@@TOTAL@@"     # remplacé une fois le total connu
+    h.append(MARQUE_TOTAL)
 
     # Détail lot par lot
     lignes = [["Lot", "Désignation", "Rubrique", "Tantièmes", "Montant"]]
@@ -181,16 +204,41 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
                            f"{t} / {cles[rub['cle']]['base']}", euros(m)])
             total += m
     lignes.append(["", "", "", "Total à régler", euros(total)])
-    h.append(tableau(lignes, [12 * mm, 30 * mm, 66 * mm, 30 * mm, 36 * mm], aligner_droite_depuis=3))
+    if grand:
+        lignes = [[l[0], Paragraph(str(l[1]), st["txt"]) if i and l[1] else l[1],
+                   Paragraph(str(l[2]), st["txt"]) if i and l[2] else l[2], l[3], l[4]] for i, l in enumerate(lignes)]
+        lignes[0] = ["Lot", "Bien", "Rubrique", "Tantièmes", "Montant"]
+        largeurs = [11 * mm, 20 * mm, 78 * mm, 31 * mm, 34 * mm]
+    else:
+        largeurs = [12 * mm, 30 * mm, 66 * mm, 30 * mm, 36 * mm]
+    h.append(tableau(lignes, largeurs, aligner_droite_depuis=3, grand=grand))
     h.append(Spacer(1, 6 * mm))
 
-    # Bloc de paiement
+    # « Ce que vous devez faire », en une phrase, selon le mode de paiement
     cpt = adf["compte_separe"]
     ref = adf["reference_virement"].format(exercice=exercice, trimestre=trimestre, coproprietaire=cid)
-    paiement = Table([[Paragraph(
-        f"<b>Règlement par virement avant le {fr(exigibilite)}</b><br/>"
-        f"Titulaire : {cpt['titulaire']}<br/>IBAN : {cpt['iban']} · BIC : {cpt['bic']}<br/>"
-        f"Référence à indiquer : <b>{ref}</b>", S["txt"])]], colWidths=[174 * mm])
+    if paiement_mode == "prelevement":
+        action = (f"<b>Rien à faire</b> : {euros(total)} seront prélevés sur votre compte le <b>{fr(exigibilite)}</b>, "
+                  f"selon le mandat de prélèvement que vous avez signé.")
+    elif cheque_possible:
+        action = (f"Payer <b>{euros(total)}</b> avant le <b>{fr(exigibilite)}</b> : par chèque à l'ordre du "
+                  f"« {cpt['titulaire']} », avec le talon en bas de page, ou par virement (référence {ref}).")
+    else:
+        action = f"Payer <b>{euros(total)}</b> avant le <b>{fr(exigibilite)}</b>, par virement (référence {ref})."
+    i = h.index(MARQUE_TOTAL)
+    h[i:i + 1] = [papier.encadre_action(action, st), Spacer(1, 6 * mm)]
+
+    # Bloc de paiement
+    if paiement_mode == "prelevement":
+        mandat = copro.get("mandat_sepa") or {}
+        texte_paiement = (f"<b>Prélèvement le {fr(exigibilite)}</b><br/>Créancier : {cpt['titulaire']} "
+                          f"(ICS {cpt.get('ics', '—')})<br/>Mandat {mandat.get('rum', '—')}, signé le "
+                          f"{fr(mandat['signe_le']) if mandat.get('signe_le') else '—'}")
+    else:
+        texte_paiement = (f"<b>Règlement par virement avant le {fr(exigibilite)}</b><br/>"
+                          f"Titulaire : {cpt['titulaire']}<br/>IBAN : {cpt['iban']} · BIC : {cpt['bic']}<br/>"
+                          f"Référence à indiquer : <b>{ref}</b>")
+    paiement = Table([[Paragraph(texte_paiement, st["txt"])]], colWidths=[174 * mm])
     paiement.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), FOND),
                                   ("LINEBEFORE", (0, 0), (0, -1), 2.5, ACCENT),
                                   ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -200,11 +248,24 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
     # Rappel de la base de calcul
     budget = sum((r["annuel"] for r in rubs if r["id"] != "fonds_travaux"), Decimal("0"))
     ft = next(r["annuel"] for r in rubs if r["id"] == "fonds_travaux")
-    h.append(Paragraph(
+    base_calcul = [Paragraph(
         f"Base de calcul : budget prévisionnel {exercice} de {euros(budget)} voté en assemblée générale, "
         f"et cotisation au fonds de travaux de {euros(ft)}, appelés en {nb_appels} fractions égales et répartis "
         f"selon les tantièmes de chaque lot. Le fonds de travaux reste attaché aux lots et n'est pas remboursable "
-        f"en cas de vente.", S["petit"]))
+        f"en cas de vente.", st["petit"]),
+        Spacer(1, 3 * mm), Paragraph(papier.MENTION_PAPIER, st["petit"])]    # mention obligatoire (loi 1965, art. 42-1)
+    from reportlab.platypus import PageBreak
+    if grand:
+        # Grands caractères : le talon reste en bas de la première page, le reste passe en page 2
+        if cheque_possible:
+            h.append(papier.talon(fiche, cid, total, ref, exigibilite, st))
+        h += [PageBreak(), base_calcul[0], Spacer(1, 6 * mm), *papier.lexique(st)]   # le lexique porte la mention
+    else:
+        h += base_calcul
+        if cheque_possible:
+            h.append(papier.talon(fiche, cid, total, ref, exigibilite, st))
+        if canal_avis == "courrier":
+            h += [PageBreak(), *papier.lexique(st)]
 
     pied = (f"{ident['nom']} – document préparé par l'assistant du syndic"
             + (" – PROJET, non valable avant validation" if projet else ""))
@@ -215,7 +276,7 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
 # --------------------------------------------------------------------------- #
 # Récapitulatif à faire valider par le syndic
 # --------------------------------------------------------------------------- #
-def generer_recap(fiche, totaux, trimestre, dossier, projet) -> Path:
+def generer_recap(fiche, totaux, trimestre, dossier, projet, canaux: dict | None = None) -> Path:
     ident = fiche["copropriete"]
     exercice = fiche["budget_previsionnel"]["exercice"]
     emission, exigibilite = dates_appel(fiche, trimestre)
@@ -231,12 +292,13 @@ def generer_recap(fiche, totaux, trimestre, dossier, projet) -> Path:
     lignes = [["ID", "Copropriétaire", "Envoi", "Lots", "Montant"]]
     for cid in sorted(totaux):
         lots = ", ".join(str(l["numero"]) for l in fiche["lots"] if l["proprietaire"] == cid)
-        lignes.append([cid, copros[cid]["nom"], copros[cid]["envoi"], lots, euros(totaux[cid])])
+        lignes.append([cid, copros[cid]["nom"], (canaux or {}).get(cid, copros[cid]["envoi"]), lots,
+                       euros(totaux[cid])])
     lignes.append(["", "", "", "Total appelé", euros(sum(totaux.values()))])
     h.append(tableau(lignes, [16 * mm, 50 * mm, 24 * mm, 48 * mm, 36 * mm], aligner_droite_depuis=4))
     h.append(Spacer(1, 4 * mm))
 
-    nb_courrier = sum(1 for cid in totaux if copros[cid]["envoi"] == "courrier")
+    nb_courrier = sum(1 for cid in totaux if (canaux or {}).get(cid, copros[cid]["envoi"]) == "courrier")
     h.append(Paragraph(f"{len(totaux)} avis générés, dont {nb_courrier} à envoyer par courrier. "
                        f"Contrôles passés : tantièmes, références, fonds de travaux ≥ 5 %, total au centime.",
                        S["txt"]))
@@ -267,6 +329,7 @@ def dossier_appel(racine: Path, copro: str, exercice: int, trimestre: int) -> Pa
 
 
 def generer_appel(fiche: dict, copro: str, trimestre: int, racine: Path, final: bool = False) -> dict:
+    import papier
     """Valide la fiche, génère les avis + la récap, écrit envoi.json et le renvoie.
     Lève FicheInvalide si la fiche ne passe pas les contrôles."""
     rapport = valider(fiche)
@@ -286,10 +349,18 @@ def generer_appel(fiche: dict, copro: str, trimestre: int, racine: Path, final: 
         totaux[cid] = total
         ref = fiche["appels_de_fonds"]["reference_virement"].format(
             exercice=exercice, trimestre=trimestre, coproprietaire=cid)
-        envoi.append({"coproprietaire": cid, "nom": copros[cid]["nom"], "envoi": copros[cid]["envoi"],
+        k = papier.canal(fiche, cid, dates_appel(fiche, trimestre)[0])
+        aidant = papier.copie_aidant(fiche, cid)
+        if aidant and "appels" not in ((copros[cid].get("aidant") or {}).get("documents") or ["appels"]):
+            aidant = None
+        envoi.append({"coproprietaire": cid, "nom": copros[cid]["nom"], "envoi": k["canal"],
                       "email": copros[cid].get("email"), "montant": euros(total), "reference": ref,
-                      "fichier": chemin.name})
-    generer_recap(fiche, totaux, trimestre, dossier, projet)
+                      "fichier": chemin.name, "grands_caracteres": bool(copros[cid].get("grands_caracteres")),
+                      "paiement": copros[cid].get("paiement", "virement"),
+                      "adresse_postale": papier.adresse_postale(fiche, cid) if k["canal"] == "courrier" else None,
+                      "copie_aidant": aidant})
+    generer_recap(fiche, totaux, trimestre, dossier, projet,
+                  {e["coproprietaire"]: e["envoi"] for e in envoi})
 
     emission, exigibilite = dates_appel(fiche, trimestre)
     resultat = {
@@ -298,6 +369,7 @@ def generer_appel(fiche: dict, copro: str, trimestre: int, racine: Path, final: 
         "date_exigibilite": exigibilite.isoformat(), "date_exigibilite_fr": fr(exigibilite),
         "dossier": str(dossier), "statut": "projet" if projet else "valide",
         "nb_avis": len(envoi), "nb_courriers": sum(1 for e in envoi if e["envoi"] == "courrier"),
+        "nb_copies_aidant": sum(1 for e in envoi if e["copie_aidant"]),
         "total": euros(sum(totaux.values())), "avis": envoi,
     }
     (dossier / "envoi.json").write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding="utf-8")

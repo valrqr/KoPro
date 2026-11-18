@@ -59,16 +59,34 @@ coproprietaires:
   - { id: CP02, nom: "Bernard Louis",    email: louis.bernard@exemple.fr,    envoi: email }
   - { id: CP03, nom: "Durand Camille",   email: camille.durand@exemple.fr,   envoi: email }
   - { id: CP04, nom: "Petit Hugo",       email: hugo.petit@exemple.fr,       envoi: email }
-  - { id: CP05, nom: "Moreau Léa",       email: lea.moreau@exemple.fr,       envoi: email }
+  - { id: CP05, nom: "Moreau Léa",       email: lea.moreau@exemple.fr,       envoi: email,
+      paiement: prelevement, mandat_sepa: { rum: "MIMOSAS-CP05", signe_le: 2026-10-05 } }
   - { id: CP06, nom: "SCI Les Pins",     email: contact@sci-lespins.exemple.fr, envoi: email }
   - { id: CP07, nom: "Laurent Inès",     email: ines.laurent@exemple.fr,     envoi: email }
-  - { id: CP08, nom: "Simon Paul",       email: null,                        envoi: courrier }
+  - { id: CP08, nom: "Simon Paul",       email: null,                        envoi: courrier,
+      grands_caracteres: true }
   - { id: CP09, nom: "Michel Chloé",     email: chloe.michel@exemple.fr,     envoi: email }
   - { id: CP10, nom: "Garcia Nathan",    email: nathan.garcia@exemple.fr,    envoi: email }
   - { id: CP11, nom: "Roux Manon",       email: manon.roux@exemple.fr,       envoi: email }
   - { id: CP12, nom: "Fournier Jules",   email: jules.fournier@exemple.fr,   envoi: email }
-  - { id: CP13, nom: "Girard Emma",      email: null,                        envoi: courrier }
+  - { id: CP13, nom: "Girard Emma",      email: emma.girard@exemple.fr,      envoi: courrier,
+      adresse: "8 rue des Essais, 06100 Nice",
+      demande_papier: { recue_le: 2026-09-15, moyen: lettre_recommandee },
+      grands_caracteres: true,
+      aidant: { nom: "Girard Hugo (fils)", email: hugo.girard@exemple.fr, consentement_le: 2026-09-15 } }
   - { id: CP14, nom: "Bonnet Lucas",     email: lucas.bonnet@exemple.fr,     envoi: email }
+
+#  Accessibilité et papier (tout est facultatif) :
+#    envoi            : email | courrier (canal habituel)
+#    adresse          : adresse postale si elle diffère de l'immeuble
+#    demande_papier   : demande de recevoir les notifications par courrier (loi 1965,
+#                       art. 42-1) : date de réception par le syndic et moyen utilisé
+#                       (lettre_recommandee | main_propre | email_accuse | extranet | ag)
+#    grands_caracteres: documents imprimés en gros caractères
+#    paiement         : virement (défaut) | cheque | prelevement (avec mandat_sepa signé)
+#    aidant           : proche qui reçoit une COPIE des documents, avec l'accord écrit
+#                       du copropriétaire (consentement_le) ; il ne vote jamais à sa place
+# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # 5. Lots
@@ -167,6 +185,7 @@ appels_de_fonds:
     titulaire: "Syndicat des copropriétaires Résidence Les Mimosas"
     iban: "FR76 0000 0000 0000 0000 0000 000"                # fictif
     bic: "EXEMFRPPXXX"                                       # fictif
+    ics: "FR00ZZZ000000"                                     # identifiant créancier SEPA, fictif (pour le prélèvement)
   reference_virement: "MIMOSAS-{exercice}-T{trimestre}-{coproprietaire}"
 
 # -----------------------------------------------------------------------------

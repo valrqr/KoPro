@@ -677,3 +677,127 @@ def test_ag_mandats_et_passerelle_25_1():
     assert not r["adoptee"] and "second vote" in r["note"]                              # 4740 pour : ≥ 1/3, < 1/2
     dep = assemblee.depouiller(fiche, a, {1: {"contre": ["CP05"], "second_vote_24": {"contre": ["CP05"]}}})
     assert dep["resolutions"][0]["adoptee"] and dep["resolutions"][0]["second_vote_24"]["adoptee"]
+
+
+# --------------------------------------------------------------------------- #
+# Pack papier
+# --------------------------------------------------------------------------- #
+import papier  # noqa: E402
+
+
+def test_papier_canal_et_prise_d_effet():
+    from datetime import date
+    # CP13 a demandé le courrier par lettre reçue le 15/09/2026 : effet le lendemain du 8e jour, soit le 24/09
+    assert papier.canal(FICHE, "CP13", date(2026, 9, 23))["canal"] == "email"
+    assert papier.canal(FICHE, "CP13", date(2026, 9, 24))["canal"] == "courrier"
+    # Demande faite en AG : effet le jour même
+    assert papier.effet_demande_papier({"recue_le": date(2027, 4, 17), "moyen": "ag"}) == date(2027, 4, 17)
+    # Sans adresse électronique, c'est le courrier
+    assert papier.canal(FICHE, "CP08")["canal"] == "courrier"
+    r = c.get("/copros/mimosas/communication", params={"au": "2026-11-18"}, headers=H).json()
+    assert r["nb_courrier"] == 2 and "courrier postal" in r["mention_obligatoire"]
+
+
+def test_papier_validation_fiche():
+    f = copy.deepcopy(FICHE)
+    cp = next(x for x in f["coproprietaires"] if x["id"] == "CP13")
+    del cp["aidant"]["consentement_le"]
+    cp["demande_papier"]["moyen"] = "pigeon"
+    err = valider(f).erreurs
+    assert any("accord écrit" in e for e in err) and any("pigeon" in e for e in err)
+
+
+def test_papier_avis_d_appel():
+    import tempfile
+    from avis_appel import generer_appel
+    from pypdf import PdfReader
+    r = generer_appel(FICHE, "mimosas", 1, Path(tempfile.mkdtemp()))
+    avis = {a["coproprietaire"]: a for a in r["avis"]}
+    assert avis["CP13"]["envoi"] == "courrier" and avis["CP13"]["copie_aidant"]["nom"].startswith("Girard Hugo")
+    assert avis["CP05"]["paiement"] == "prelevement" and r["nb_copies_aidant"] == 1
+    texte = lambda cid: " ".join(p.extract_text() for p in PdfReader(str(Path(r["dossier"]) / f"avis_{cid}.pdf")).pages)
+    t08, t05, t01 = texte("CP08"), texte("CP05"), texte("CP01")
+    for t in (t08, t05, t01):
+        assert "Ce que vous devez faire" in t and "courrier postal" in t            # mention obligatoire partout
+    assert "Talon à joindre à votre chèque" in t08 and "Les mots de votre copropriété" in t08
+    assert "Rien à faire" in t05 and "Talon" not in t05
+    assert "Talon" not in t01 and "Les mots" not in t01                              # mail, virement : avis court
+    assert len(PdfReader(str(Path(r["dossier"]) / "avis_CP01.pdf")).pages) == 1
+
+
+def test_papier_bulletin_de_sondage_et_saisie():
+    corps = {"titre": "Remplacement de la boîte aux lettres collective", "nature": "reparation"}
+    d = c.post("/copros/mimosas/travaux", json=corps, headers=H).json()
+    devis = Path(__file__).resolve().parent.parent / "exemples" / "devis" / "devis_portes_azur.pdf"
+    for ent, ht in (("Portes Azur", "900"), ("Fermetures Niçoises", "820")):
+        with open(devis, "rb") as f:
+            assert c.post(f"/copros/mimosas/travaux/{d['id']}/devis", headers=H,
+                          data={"entreprise": ent, "montant_ht": ht, "taux_tva": "10"},
+                          files={"fichier": ("d.pdf", f, "application/pdf")}).status_code == 201
+    s = c.post(f"/copros/mimosas/travaux/{d['id']}/sondages", json={"duree_jours": 7}, headers=H).json()
+    inv = {i["coproprietaire"]: i for i in s["invitations"]}
+    assert "bulletin_papier" in inv["CP08"] and "bulletin_papier" not in inv["CP01"]
+    base = f"/copros/mimosas/travaux/{d['id']}/sondages/{s['sondage']}"
+    pdf = c.get(f"{base}/bulletins/CP08", headers=H)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    from datetime import datetime, timedelta
+    maintenant = datetime.now().replace(microsecond=0)
+    r = c.post(f"{base}/bulletins/CP08", json={"choix": "D2", "recu_le": maintenant.isoformat()}, headers=H)
+    assert r.status_code == 200 and r.json()["origine"] == "papier"
+    tard = (maintenant + timedelta(days=8)).isoformat()
+    assert c.post(f"{base}/bulletins/CP13", json={"choix": "D1", "recu_le": tard}, headers=H).status_code == 422
+    assert c.post(f"{base}/bulletins/CP13", json={"choix": "D9", "recu_le": maintenant.isoformat()},
+                  headers=H).status_code == 422
+    res = c.get(base, headers=H).json()
+    assert res["participation_nb"] == 1
+
+
+def test_papier_affiche_a4_a3():
+    from pypdf import PdfReader
+    import io
+    a4 = c.get("/copros/mimosas/affiche.pdf", params={"au": "2027-03-01"}, headers=H)
+    a3 = c.get("/copros/mimosas/affiche.pdf", params={"au": "2027-03-01", "format": "A3"}, headers=H)
+    assert a4.status_code == a3.status_code == 200
+    l4 = float(PdfReader(io.BytesIO(a4.content)).pages[0].mediabox.width)
+    l3 = float(PdfReader(io.BytesIO(a3.content)).pages[0].mediabox.width)
+    assert round(l4) == 595 and round(l3) == 842                                     # A4 puis A3 (en points)
+    texte = PdfReader(io.BytesIO(a4.content)).pages[0].extract_text()
+    assert "Votre syndic" in texte and "Durand Camille" in texte
+    autres = [x["nom"] for x in FICHE["coproprietaires"] if x["id"] != "CP03"]
+    assert not any(nom in texte for nom in autres) and "Votre part" not in texte    # rien de personnel
+    assert c.get("/copros/mimosas/affiche.pdf", params={"format": "A5"}, headers=H).status_code == 422
+
+
+def test_papier_registre_et_controle_des_convocations():
+    corps = {"date": "2027-05-29", "heure": "18h", "lieu": "Salle commune", "suffixe": "registre",
+             "resolutions": [{"titre": "Approbation des comptes", "majorite": "24"}]}
+    a = c.post("/copros/mimosas/ag", json=corps, headers=H).json()
+    limite = a["calendrier"]["limite_notification"]                                  # 2027-05-07
+    doc = f"ag:{a['id']}"
+    e1 = c.post("/copros/mimosas/envois", headers=H, json={"coproprietaire": "CP08", "document": doc, "canal": "lrar",
+                "envoye_le": "2027-04-28", "numero": "1A 234 567 8901 2", "notifie_le": "2027-04-30"}).json()
+    e2 = c.post("/copros/mimosas/envois", headers=H, json={"coproprietaire": "CP13", "document": doc, "canal": "lrar",
+                "envoye_le": "2027-05-05"}).json()
+    assert e1["statut"] == "notifie" and e2["statut"] == "envoye"
+    assert c.put(f"/copros/mimosas/envois/{e2['id']}", headers=H, json={"notifie_le": "2027-05-04"}).status_code == 422
+    c.put(f"/copros/mimosas/envois/{e2['id']}", headers=H, json={"notifie_le": "2027-05-10"})       # présentée trop tard
+    ctl = c.get(f"/copros/mimosas/ag/{a['id']}/convocations", headers=H).json()
+    etats = {l["id"]: l["etat"] for l in ctl["lignes"]}
+    assert ctl["limite_notification"] == limite == "2027-05-07"
+    assert etats["CP08"] == "ok" and etats["CP13"] == "tardif" and etats["CP01"] == "manquant"
+    assert c.post("/copros/mimosas/envois", headers=H, json={"coproprietaire": "CP01", "document": doc,
+                  "canal": "pigeon", "envoye_le": "2027-04-28"}).status_code == 422
+    assert len(c.get("/copros/mimosas/envois", params={"document": doc}, headers=H).json()) == 2
+
+
+def test_papier_mandat_sepa_et_lot_postal():
+    m = c.get("/copros/mimosas/coproprietaires/CP05/mandat-sepa.pdf", headers=H)
+    assert m.status_code == 200 and m.content[:4] == b"%PDF"
+    base = "/copros/mimosas/appels/2027/T2"
+    c.post(base, headers=H)
+    assert c.post(f"{base}/lot-postal", headers=H).status_code == 409                 # pas avant validation
+    c.post(base, params={"final": "true"}, headers=H)
+    r = c.post(f"{base}/lot-postal", headers=H).json()
+    assert r["nb_courriers"] == 2 and len(r["registre"]) == 2
+    from pypdf import PdfReader
+    assert len(PdfReader(r["pdf"]).pages) % 2 == 0                                    # recto-verso : nombre pair
