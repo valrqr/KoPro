@@ -90,6 +90,13 @@ python tests/test_api.py                                             # les tests
 | GET | `/copros/{copro}/travaux/{id}` | Dossier + comparatif des devis + qui décide |
 | POST | `/copros/{copro}/travaux/{id}/devis` | Ajouter un devis (formulaire + PDF) |
 | GET | `/copros/{copro}/travaux/{id}/comparatif.pdf` | Comparatif PDF à joindre à une convocation |
+| POST | `/copros/{copro}/travaux/{id}/resume` | Résumé IA des différences entre devis (brouillon) |
+| PUT | `/copros/{copro}/travaux/{id}/resume` | Le syndic valide, et peut corriger, le résumé |
+| POST | `/copros/{copro}/travaux/{id}/verifications` | Vérifie les entreprises : registre, BODACC, RGE, assurance décennale |
+| POST | `/copros/{copro}/travaux/{id}/sondages` | Ouvre un sondage consultatif et renvoie un lien personnel par copropriétaire |
+| GET | `/copros/{copro}/travaux/{id}/sondages/{s}` | Résultats du sondage (en voix et en nombre) |
+| POST | `/copros/{copro}/travaux/{id}/ag` | Dépouillement d'AG : une résolution par devis, majorités art. 24, 25, 25-1, 26 |
+| POST | `/copros/{copro}/travaux/{id}/conseil` | Vote du conseil syndical (délégation de pouvoirs) |
 | POST | `/copros/{copro}/appels/{exercice}/T{n}?final=false` | Génère avis + récap, renvoie la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}` | Relit la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/recap` | PDF de la récap à signer |
@@ -104,7 +111,47 @@ Pour une intervention non prévue, le syndic ouvre un **dossier de travaux** et 
 - **indique qui peut décider** (syndic seul, urgence, conseil syndical par délégation, ou AG) à partir des seuils votés en AG et inscrits dans la fiche ;
 - **produit un comparatif PDF** à joindre à la convocation ou à diffuser aux copropriétaires.
 
+### La vérification des entreprises
+
+Pour chaque devis, KoPro vérifie l'entreprise à partir de **sources publiques françaises, gratuites et sans clé** :
+
+| Vérification | Source |
+|---|---|
+| SIRET présent et valide (clé de contrôle) | Le devis lui-même |
+| Entreprise active ou fermée, date de création, label RGE | [API Recherche d'entreprises](https://annuaire-entreprises.data.gouv.fr) |
+| Procédures collectives (sauvegarde, redressement, liquidation) sur 5 ans | [BODACC](https://www.bodacc.fr) |
+| Mention d'une assurance décennale | Le devis lui-même |
+
+Les constats figurent dans le comparatif PDF et sont transmis à l'IA pour le résumé. Une source injoignable est signalée comme « non consultée », jamais présentée comme un résultat rassurant. KoPro ne reprend aucun avis en ligne : seuls des registres officiels sont consultés.
+
+### Le résumé IA des devis
+
+Pour les copropriétaires qui n'ont pas le temps de lire trois devis, KoPro peut faire rédiger par **Mistral** (IA française, hébergée en Europe) un résumé de 2 ou 3 phrases sur ce qui distingue les devis : prix, prestations incluses ou exclues, garanties, délais, validité, assurance.
+
+- **Neutre** : l'IA décrit, elle ne recommande jamais. Une formulation de recommandation bloque la validation.
+- **Fidèle** : elle ne s'appuie que sur le texte des devis. Un montant qui n'y figure pas est signalé, et une information absente est dite « non précisée ».
+- **Protégée** : le texte des devis est traité comme une donnée. Une consigne glissée dans un devis est ignorée.
+- **Validée** : le résumé est un brouillon jusqu'à ce que le syndic le relise, le corrige si besoin et le valide. Il devient obsolète si un devis est ajouté.
+
+Le texte des devis est envoyé à Mistral pour l'analyse. Activation : `MISTRAL_API_KEY` dans `.env`.
+
+**Démonstration** : avec le moteur lancé, `bash scripts/demo_travaux.sh` crée un dossier sur la copro fictive, dépose les 3 devis d'exemple de `exemples/devis/`, demande le résumé à Mistral puis télécharge le comparatif PDF.
+
 > ⚖️ En copropriété, la plupart des travaux se décident en assemblée générale. L'aiguillage de KoPro est indicatif et ne remplace pas l'avis d'un juriste ou de l'ADIL. Le vote (sondage consultatif, conseil syndical, dépouillement d'AG) est la prochaine brique.
+
+### Le vote
+
+| Usage | Qui vote | Règle |
+|---|---|---|
+| **Sondage consultatif** | Chaque copropriétaire, par un lien personnel | Avis en tantièmes, sans valeur de décision |
+| **Conseil syndical** | Les membres du conseil, une voix chacun | Majorité des membres, dans la limite de la délégation votée en AG |
+| **Assemblée générale** | Présents, représentés, votes par correspondance | Art. 24 (voix exprimées), 25 (toutes les voix), 25-1 (second vote), 26 (double majorité) |
+
+Pour plusieurs devis, chaque devis fait l'objet d'une résolution, votées dans l'ordre : la première adoptée l'emporte. Les voix suivent la clé de répartition du dossier (seuls les copropriétaires concernés votent les charges spéciales) et la réduction de l'article 22 s'applique. Les liens de vote ne sont jamais stockés en clair.
+
+<p align="center"><img src="docs/apercu_page_vote.png" alt="Page de vote d'un copropriétaire" width="300"></p>
+
+> Le calcul est une aide : seul le procès-verbal d'AG signé fait foi.
 
 ## Données personnelles
 

@@ -20,6 +20,15 @@ Routes :
     POST /copros/{copro}/travaux/{id}/devis                 ajouter un devis (formulaire + PDF)
     GET  /copros/{copro}/travaux/{id}/devis/{devis}/pdf     PDF d'un devis
     GET  /copros/{copro}/travaux/{id}/comparatif.pdf        comparatif à joindre ou diffuser
+    POST /copros/{copro}/travaux/{id}/resume                résumé IA des devis (brouillon)
+    PUT  /copros/{copro}/travaux/{id}/resume                le syndic valide (et corrige) le résumé
+    POST /copros/{copro}/travaux/{id}/verifications         vérifie les entreprises (registre, BODACC, décennale)
+    POST /copros/{copro}/travaux/{id}/sondages              ouvre un sondage consultatif, renvoie les liens personnels
+    GET  /copros/{copro}/travaux/{id}/sondages/{s}          résultats du sondage
+    POST /copros/{copro}/travaux/{id}/sondages/{s}/cloture  clôture anticipée
+    POST /copros/{copro}/travaux/{id}/ag                    dépouillement d'AG (une résolution par devis)
+    POST /copros/{copro}/travaux/{id}/conseil               vote du conseil syndical (délégation)
+    GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
 Lancement local : uvicorn moteur.api:app --reload   (depuis la racine du projet)
@@ -31,12 +40,12 @@ import json
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Security, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
@@ -44,12 +53,17 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "core"))
 from avis_appel import FicheInvalide, dossier_appel, generer_appel  # noqa: E402
 from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche, echeances, valider  # noqa: E402
+import resume_ia  # noqa: E402
 import travaux  # noqa: E402
+import vote  # noqa: E402
+
+from . import page_vote  # noqa: E402
 
 DOSSIER_CONFIG = Path(os.getenv("MOTEUR_CONFIG_DIR", RACINE / "config"))
 DOSSIER_SORTIE = Path(os.getenv("MOTEUR_OUT_DIR", RACINE / "out"))
 DOSSIER_DATA = Path(os.getenv("MOTEUR_DATA_DIR", RACINE / "data"))   # dossiers de travaux, devis
 TOKEN = os.getenv("MOTEUR_TOKEN", "")
+URL_PUBLIQUE = os.getenv("MOTEUR_URL_PUBLIQUE", "http://localhost:8000").rstrip("/")
 
 # Identifiants autorisés : lettres, chiffres, tirets. Empêche de sortir des dossiers (../).
 SLUG = r"^[a-z0-9][a-z0-9-]{0,40}$"
@@ -272,4 +286,228 @@ def pdf_comparatif(copro: str = Copro, dossier_id: str = Dossier, au: date | Non
         raise HTTPException(409, "Ajoutez au moins un devis avant de générer le comparatif")
     fiche = fiche_de(copro)
     sortie = travaux.generer_pdf(fiche, travaux.synthese(fiche, d, au), chemin / "comparatif.pdf", au)
+    return FileResponse(sortie, media_type="application/pdf", filename=f"comparatif_{dossier_id}.pdf")
+
+
+class ValidationResume(BaseModel):
+    texte: str | None = Field(None, max_length=1500, description="Texte corrigé par le syndic (facultatif)")
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/resume", status_code=201, dependencies=[Depends(verifier_cle)])
+def generer_resume(copro: str = Copro, dossier_id: str = Dossier, au: date | None = Query(None)) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    fiche = fiche_de(copro)
+    comp = travaux.comparatif(fiche, d, au)
+    try:
+        resume = resume_ia.generer(fiche, d, comp, chemin)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    except resume_ia.IAIndisponible as e:
+        raise HTTPException(503, str(e))
+    d["resume_ia"] = resume
+    travaux.sauver_dossier(chemin, d)
+    return resume_ia.etat(resume, d)
+
+
+@app.put("/copros/{copro}/travaux/{dossier_id}/resume", dependencies=[Depends(verifier_cle)])
+def valider_resume(corps: ValidationResume, copro: str = Copro, dossier_id: str = Dossier) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    actuel = resume_ia.etat(d.get("resume_ia"), d)
+    if not actuel:
+        raise HTTPException(404, "Aucun résumé à valider : générez-le d'abord")
+    if actuel["obsolete"]:
+        raise HTTPException(409, "Les devis ont changé depuis le résumé : générez-en un nouveau")
+    try:
+        d["resume_ia"] = resume_ia.valider(d["resume_ia"], corps.texte, comp=travaux.comparatif(fiche_de(copro), d))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    travaux.sauver_dossier(chemin, d)
+    return resume_ia.etat(d["resume_ia"], d)
+
+
+class DemandeVerification(BaseModel):
+    siren: dict[str, str] = Field(default_factory=dict,
+                                  description="SIREN saisis à la main quand le devis n'en porte pas, ex. {\"D2\": \"123456789\"}")
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/verifications", dependencies=[Depends(verifier_cle)])
+def verifier_entreprises(corps: DemandeVerification | None = None, copro: str = Copro,
+                         dossier_id: str = Dossier) -> list[dict]:
+    fiche_de(copro)
+    _, d = dossier_de(copro, dossier_id)
+    if not d["devis"]:
+        raise HTTPException(409, "Ajoutez au moins un devis avant de vérifier les entreprises")
+    try:
+        return travaux.verifier_entreprises(DOSSIER_DATA, copro, d, (corps.siren if corps else None))
+    except travaux.DossierInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Votes
+# --------------------------------------------------------------------------- #
+class OuvertureSondage(BaseModel):
+    options: list[str] | None = Field(None, description="Devis soumis à l'avis (défaut : tous les devis non expirés)")
+    duree_jours: int = Field(7, ge=1, le=30, description="Durée du sondage")
+
+
+ID_SONDAGE = r"^S\d{1,3}$"
+JETON = r"^[A-Za-z0-9_-]{20,40}$"
+
+
+def _sondage_de(d: dict, sid: str) -> dict:
+    s = next((x for x in d.get("sondages", []) if x["id"] == sid), None)
+    if not s:
+        raise HTTPException(404, f"Aucun sondage {sid} dans ce dossier")
+    return s
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/sondages", status_code=201, dependencies=[Depends(verifier_cle)])
+def ouvrir_sondage(corps: OuvertureSondage, copro: str = Copro, dossier_id: str = Dossier) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    fiche = fiche_de(copro)
+    options = corps.options or [x["id"] for x in travaux.comparatif(fiche, d)["devis"] if not x["expire"]]
+    try:
+        sondage, jetons = vote.ouvrir_sondage(fiche, d, options, corps.duree_jours)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    d.setdefault("sondages", []).append(sondage)
+    travaux.sauver_dossier(chemin, d)
+    copros = {c["id"]: c for c in fiche["coproprietaires"]}
+    return {"sondage": sondage["id"], "clos_le": sondage["clos_le"], "options": options,
+            "invitations": [{"coproprietaire": cid, "nom": copros[cid]["nom"], "email": copros[cid].get("email"),
+                             "envoi": copros[cid]["envoi"],
+                             "lien": f"{URL_PUBLIQUE}/vote/{copro}/{dossier_id}/{sondage['id']}/{j}"}
+                            for cid, j in jetons.items()],
+            "avertissement": "Les liens ne sont affichés qu'une fois : ils ne sont pas conservés en clair."}
+
+
+@app.get("/copros/{copro}/travaux/{dossier_id}/sondages/{sid}", dependencies=[Depends(verifier_cle)])
+def resultats_sondage(copro: str = Copro, dossier_id: str = Dossier, sid: str = PathParam(..., pattern=ID_SONDAGE)) -> dict:
+    _, d = dossier_de(copro, dossier_id)
+    return vote.resultats_sondage(_sondage_de(d, sid))
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/sondages/{sid}/cloture", dependencies=[Depends(verifier_cle)])
+def cloturer_sondage(copro: str = Copro, dossier_id: str = Dossier, sid: str = PathParam(..., pattern=ID_SONDAGE)) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    s = _sondage_de(d, sid)
+    s["cloture_anticipee"] = datetime.now().replace(microsecond=0).isoformat()
+    travaux.sauver_dossier(chemin, d)
+    return vote.resultats_sondage(s)
+
+
+class Resolution(BaseModel):
+    devis: str = Field(..., pattern=ID_DEVIS)
+    bulletins: dict[str, str] = Field(..., description="{copropriétaire: pour | contre | abstention} ; absents omis")
+    second_vote_24: dict[str, str] | None = Field(None, description="Second vote (art. 25-1), si l'AG y a procédé")
+
+
+class Depouillement(BaseModel):
+    majorite: str = Field("24", pattern=r"^(24|25|26)$")
+    resolutions: list[Resolution] = Field(..., min_length=1, description="Dans l'ordre de l'ordre du jour")
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/ag", dependencies=[Depends(verifier_cle)])
+def depouiller_ag(corps: Depouillement, copro: str = Copro, dossier_id: str = Dossier) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    voix = vote.electorat(fiche_de(copro), d["cle"])
+    try:
+        res = vote.depouiller_ag([r.model_dump() for r in corps.resolutions], voix, corps.majorite)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    d["ag"] = res
+    travaux.sauver_dossier(chemin, d)
+    return res
+
+
+class VoteConseil(BaseModel):
+    resolutions: list[Resolution] = Field(..., min_length=1)
+
+
+@app.post("/copros/{copro}/travaux/{dossier_id}/conseil", dependencies=[Depends(verifier_cle)])
+def voter_conseil(corps: VoteConseil, copro: str = Copro, dossier_id: str = Dossier) -> dict:
+    chemin, d = dossier_de(copro, dossier_id)
+    fiche = fiche_de(copro)
+    membres = fiche["gouvernance"].get("conseil_syndical", [])
+    aig = travaux.aiguillage(fiche, d, travaux.comparatif(fiche, d)["reference_ttc"])
+    res, retenu = [], None
+    try:
+        for r in corps.resolutions:
+            if retenu:
+                res.append({"devis": r.devis, "statut": "sans_objet"})
+                continue
+            v = vote.vote_conseil(r.bulletins, membres)
+            v["devis"], v["statut"] = r.devis, "adoptee" if v["adoptee"] else "rejetee"
+            retenu = r.devis if v["adoptee"] else None
+            res.append(v)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    sortie = {"devis_retenu": retenu, "resolutions": res,
+              "avertissement": None if aig["circuit"] == "conseil_syndical" else
+              "Attention : selon l'aiguillage, ce dossier ne relève pas d'une décision du conseil syndical "
+              f"({aig['titre']}). Ce vote ne vaut qu'avis."}
+    d["conseil"] = sortie
+    travaux.sauver_dossier(chemin, d)
+    return sortie
+
+
+# --- Pages publiques : l'accès se fait par le jeton personnel, sans clé d'API -------------------- #
+def _electeur(copro: str, dossier_id: str, sid: str, jeton: str):
+    try:
+        chemin, d = dossier_de(copro, dossier_id)
+        s = _sondage_de(d, sid)
+    except HTTPException:
+        return None
+    cid = vote.trouver_electeur(s, jeton)
+    return (chemin, d, s, cid) if cid else None
+
+
+def _page(copro, dossier_id, sid, jeton, message=None) -> HTMLResponse:
+    trouve = _electeur(copro, dossier_id, sid, jeton)
+    if not trouve:
+        return HTMLResponse(page_vote.page_erreur("Ce lien de vote n'est pas valide. Vérifiez qu'il est complet, "
+                                                  "ou demandez-en un nouveau au syndic."), status_code=404)
+    _, d, s, cid = trouve
+    fiche = fiche_de(copro)
+    synth = travaux.synthese(fiche, d)
+    nom = next(c["nom"] for c in fiche["coproprietaires"] if c["id"] == cid)
+    html = page_vote.page_sondage(fiche["copropriete"]["nom"], d, s, cid, nom, synth["comparatif"],
+                                  synth["resume_ia"], f"{URL_PUBLIQUE}/vote/{copro}/{dossier_id}/{sid}/{jeton}/comparatif.pdf",
+                                  message, vote.est_ouvert(s))
+    return HTMLResponse(html, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+Jeton = PathParam(..., pattern=JETON)
+Sid = PathParam(..., pattern=ID_SONDAGE)
+
+
+@app.get("/vote/{copro}/{dossier_id}/{sid}/{jeton}", response_class=HTMLResponse, include_in_schema=False)
+def page_de_vote(copro: str = Copro, dossier_id: str = Dossier, sid: str = Sid, jeton: str = Jeton):
+    return _page(copro, dossier_id, sid, jeton)
+
+
+@app.post("/vote/{copro}/{dossier_id}/{sid}/{jeton}", response_class=HTMLResponse, include_in_schema=False)
+def enregistrer_vote(copro: str = Copro, dossier_id: str = Dossier, sid: str = Sid, jeton: str = Jeton,
+                     choix: str = Form(..., max_length=20)):
+    trouve = _electeur(copro, dossier_id, sid, jeton)
+    if not trouve:
+        return _page(copro, dossier_id, sid, jeton)
+    chemin, d, s, cid = trouve
+    try:
+        vote.voter_sondage(s, cid, choix)
+    except ValueError as e:
+        return HTMLResponse(page_vote.page_erreur(str(e)), status_code=409)
+    travaux.sauver_dossier(chemin, d)
+    return _page(copro, dossier_id, sid, jeton, "Merci, votre avis est enregistré.")
+
+
+@app.get("/vote/{copro}/{dossier_id}/{sid}/{jeton}/comparatif.pdf", include_in_schema=False)
+def comparatif_electeur(copro: str = Copro, dossier_id: str = Dossier, sid: str = Sid, jeton: str = Jeton):
+    trouve = _electeur(copro, dossier_id, sid, jeton)
+    if not trouve:
+        raise HTTPException(404, "Lien invalide")
+    chemin, d, _, _ = trouve
+    fiche = fiche_de(copro)
+    sortie = travaux.generer_pdf(fiche, travaux.synthese(fiche, d), chemin / "comparatif.pdf")
     return FileResponse(sortie, media_type="application/pdf", filename=f"comparatif_{dossier_id}.pdf")

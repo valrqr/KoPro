@@ -18,6 +18,7 @@ services:
       MOTEUR_CONFIG_DIR: /app/config
       MOTEUR_OUT_DIR: /app/out
       MOTEUR_DATA_DIR: /app/data
+      MOTEUR_URL_PUBLIQUE: ${MOTEUR_URL_PUBLIQUE:-http://localhost:8000}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-medium-latest}
     volumes:

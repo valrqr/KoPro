@@ -182,6 +182,10 @@ def comparatif(fiche: dict, dossier: dict, aujourd_hui: date | None = None) -> d
                            f"{date.fromisoformat(l['valide_jusqu_au']):%d/%m/%Y} : demander une mise à jour")
         if not l["fichier"]:
             alertes.append(f"Devis {l['id']} ({l['entreprise']}) : PDF du devis non joint")
+    for l in lignes:
+        for a in (l.get("verification") or {}).get("alertes", []):
+            if a["niveau"] == "critique":
+                alertes.append(f"{l['id']} ({l['entreprise']}) : {a['message']}")
     if len(valides) >= 2 and (valides[-1]["montant_ttc"] - reference) / reference > ECART_IMPORTANT:
         alertes.append("Écart de plus de 50 % entre les devis : vérifier qu'ils portent sur les mêmes prestations")
 
@@ -247,9 +251,35 @@ def aiguillage(fiche: dict, dossier: dict, montant: Decimal | None) -> dict:
     return res
 
 
+def verifier_entreprises(racine: Path, copro: str, dossier: dict, sirens: dict[str, str] | None = None,
+                         src=None, aujourd_hui: date | None = None) -> list[dict]:
+    """Vérifie chaque entreprise (registre, BODACC, décennale) et range le résultat dans le dossier."""
+    import entreprises
+    import resume_ia
+    chemin = dossier_dir(racine, copro, dossier["id"])
+    sirens = sirens or {}
+    fiches = []
+    for d in dossier["devis"]:
+        texte = resume_ia.extraire_texte(chemin / d["fichier"]) if d.get("fichier") else ""
+        siren = sirens.get(d["id"])
+        if siren is not None and not re.fullmatch(r"\d{9}", siren):
+            raise DossierInvalide(f"SIREN saisi pour {d['id']} invalide : 9 chiffres attendus")
+        d["verification"] = entreprises.verifier_devis(d, texte, src, siren, aujourd_hui)
+        fiches.append(d["verification"])
+    sauver_dossier(chemin, dossier)
+    return fiches
+
+
 def synthese(fiche: dict, dossier: dict, aujourd_hui: date | None = None) -> dict:
+    import resume_ia
     comp = comparatif(fiche, dossier, aujourd_hui)
-    return {"dossier": dossier, "comparatif": comp, "aiguillage": aiguillage(fiche, dossier, comp["reference_ttc"])}
+    d = {k: v for k, v in dossier.items() if k != "resume_ia"}
+    return {"dossier": d, "comparatif": comp, "aiguillage": aiguillage(fiche, dossier, comp["reference_ttc"]),
+            "resume_ia": resume_ia.etat(dossier.get("resume_ia"), dossier)}
+
+
+def _echapper(t: str) -> str:
+    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 # --------------------------------------------------------------------------- #
@@ -273,6 +303,18 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
          Spacer(1, 5 * mm)]
     if d.get("description"):
         h += [Paragraph(d["description"], S["txt"]), Spacer(1, 5 * mm)]
+
+    r = synth.get("resume_ia")
+    if r and r.get("statut") == "valide" and not r.get("obsolete"):
+        texte = (f"<b>En bref</b><br/>{_echapper(r['resume'])}"
+                 f"<br/><font size='7.5' color='#616E7C'>Résumé rédigé par une IA (Mistral) à partir des devis, "
+                 f"relu et validé par le syndic le {date.fromisoformat(r['valide_le']):%d/%m/%Y}. "
+                 f"Il décrit les différences sans recommander de devis : se référer aux devis joints.</font>")
+        bref = Table([[Paragraph(texte, S["txt"])]], colWidths=[174 * mm])
+        bref.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.8, ACCENT),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+        h += [bref, Spacer(1, 6 * mm)]
 
     lignes = [["Devis", "Entreprise", "HT", "TVA", "TTC", "Écart", "Délai"]]
     for l in comp["devis"]:
@@ -298,6 +340,23 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
                                  ("LEFTPADDING", (0, 0), (-1, -1), 10),
                                  ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     h += [KeepTogether([Paragraph("Qui décide ?", S["sous"]), Spacer(1, 2 * mm), encadre]), Spacer(1, 6 * mm)]
+
+    verifs = [l for l in comp["devis"] if l.get("verification")]
+    if verifs:
+        import entreprises
+        sym = {"critique": "<b>Alerte :</b>", "attention": "À vérifier :", "info": "Info :"}
+        lv = [["Devis", "Entreprise au registre et constats", "Alertes"]]
+        for l in verifs:
+            v = l["verification"]
+            alertes_v = [a for a in v["alertes"] if a["niveau"] != "info"]
+            lv.append([l["id"], Paragraph(_echapper(entreprises.resume_verifications(v)), S["txt"]),
+                       Paragraph("<br/>".join(f"{sym[a['niveau']]} {_echapper(a['message'])}" for a in alertes_v) or "aucune",
+                                 S["txt"])])
+        h.append(Paragraph(f"Vérification des entreprises · registre des entreprises et BODACC, consultés le "
+                           f"{date.fromisoformat(verifs[0]['verification']['verifie_le']):%d/%m/%Y}", S["sous"]))
+        h.append(Spacer(1, 2 * mm))
+        h.append(tableau(lv, [14 * mm, 80 * mm, 80 * mm], aligner_droite_depuis=3, lignes_total=0))
+        h.append(Spacer(1, 6 * mm))
 
     if comp["alertes"]:
         h.append(Paragraph("<b>Points d'attention</b><br/>" + "<br/>".join(f"• {a}" for a in comp["alertes"]), S["txt"]))

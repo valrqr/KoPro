@@ -12,7 +12,7 @@ Principes :
     - le résultat est un BROUILLON : le syndic le relit, le corrige et le valide avant diffusion
     - si un devis est ajouté après coup, le résumé devient obsolète
 
-Configuration : MISTRAL_API_KEY (obligatoire), MISTRAL_MODEL (défaut : mistral-small-latest).
+Configuration : MISTRAL_API_KEY (obligatoire), MISTRAL_MODEL (défaut : mistral-medium-latest).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 
 TEXTE_MIN_LISIBLE = 200          # en dessous : devis scanné (image) ou vide
 TEXTE_MAX_PAR_DEVIS = 12_000     # caractères envoyés à l'IA par devis
-CRITERES = ["Prix", "Prestations", "Garanties", "Délais", "Validité", "Assurance", "Conditions"]
+CRITERES = ["Prix", "Prestations", "Garanties", "Délais", "Validité", "Assurance", "Conditions", "Entreprise"]
 
 # Formulations interdites : le résumé décrit, il ne conseille pas
 MOTS_RECOMMANDATION = re.compile(
@@ -117,7 +117,8 @@ les différences qui peuvent changer la décision :
    d. puis seulement les écarts de prix, de garantie et de délai.
 
 Les points couvrent chaque critère de la grille : Prix, Prestations, Garanties, Délais, Validité, Assurance,
-Conditions (acompte, modalités de paiement, réserves).
+Conditions (acompte, modalités de paiement, réserves), Entreprise (constats des vérifications officielles :
+SIRET, registre, procédures collectives).
 
 Précisions de vocabulaire :
 - Une assurance n'est pas « incluse » : un devis la « mentionne » ou « ne la mentionne pas ». Si un seul devis
@@ -132,7 +133,7 @@ un élément, vérifie qu'il n'apparaît dans aucun de tes points : une informat
 Réponds UNIQUEMENT par un objet JSON de cette forme :
 {
   "resume": "2 ou 3 phrases",
-  "points": [{"critere": "Prix|Prestations|Garanties|Délais|Validité|Assurance|Conditions", "constat": "une phrase factuelle"}],
+  "points": [{"critere": "Prix|Prestations|Garanties|Délais|Validité|Assurance|Conditions|Entreprise", "constat": "une phrase factuelle"}],
   "manquants": ["information totalement absente d'un devis, ex. « Délai d'intervention non précisé dans le devis D3 (Entreprise) »"]
 }"""
 
@@ -179,7 +180,7 @@ class Mistral:
 
     def __init__(self, cle: str | None = None, modele: str | None = None, delai: int = 60):
         self.cle = cle or os.getenv("MISTRAL_API_KEY", "")
-        self.modele = modele or os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+        self.modele = modele or os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
         self.delai = delai
 
     def completer(self, messages: list[dict]) -> str:
@@ -240,7 +241,10 @@ def controler(sortie: dict, comp: dict) -> list[str]:
                     "Validité": "validit", "Conditions": "acompte"}
     for m in sortie.get("manquants", []):
         ids = set(re.findall(r"\bD\d+\b", m))
+        nb_avant = len(problemes)
         for critere, mot in mots_critere.items():
+            if len(problemes) > nb_avant:
+                break
             if mot in m.lower():
                 for p in sortie.get("points", []):
                     if p.get("critere") == critere and ids & set(re.findall(r"\bD\d+\b", p.get("constat", ""))) \
