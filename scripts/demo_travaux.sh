@@ -7,7 +7,7 @@
 #   5. propose de le valider, puis télécharge le comparatif PDF
 #
 # Prérequis : le moteur tourne (docker compose up -d), MOTEUR_TOKEN et MISTRAL_API_KEY sont dans .env
-# Lancement, depuis le dossier KoPro :   bash scripts/demo_travaux.sh
+# Lancement, depuis la racine du projet :   bash scripts/demo_travaux.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

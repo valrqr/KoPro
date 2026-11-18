@@ -577,3 +577,103 @@ def test_plan_comparatif_signale_le_depassement_de_l_estimation():
     comp = c.get(f"/copros/mimosas/travaux/{d['id']}", headers=H).json()["comparatif"]
     assert comp["plan"]["ligne"] == "L01" and comp["plan"]["ecart_pct"] == "30.4"   # 4 565 € TTC vs 3 500 €
     assert any("estimation du plan" in a for a in comp["alertes"])
+
+
+# --------------------------------------------------------------------------- #
+# Assemblée générale sans papier
+# --------------------------------------------------------------------------- #
+import ag as assemblee  # noqa: E402
+
+AG = "/copros/mimosas/ag"
+
+
+def test_ag_jours_francs():
+    from datetime import date
+    # Exemple de référence : AG le samedi 14 novembre 2026 → formulaire reçu au plus tard le mardi 10
+    assert assemblee.limite_jours_francs(date(2026, 11, 14)) == date(2026, 11, 10)
+
+
+def test_ag_de_bout_en_bout():
+    odj = c.get(f"{AG}/ordre-du-jour-type", headers=H).json()["resolutions"]
+    assert [r["majorite"] for r in odj[:5]] == ["24", "24", "25", "25", "25"]
+    corps = {"date": "2027-04-17", "heure": "18h30", "lieu": "Salle commune",
+             "resolutions": odj + [{"titre": "Mise aux normes de l'ascenseur", "majorite": "24", "cle": "ascenseur"}]}
+    r = c.post(AG, json=corps, headers=H)
+    assert r.status_code == 201, r.text
+    a = r.json()
+    assert a["id"] == "2027-04-17" and len(a["resolutions"]) == 7
+    assert a["calendrier"]["limite_correspondance"] == "2027-04-13"
+    assert a["calendrier"]["limite_notification"] == "2027-03-26"
+    assert c.post(AG, json=corps, headers=H).status_code == 422                     # même date : refusée
+    base = f"{AG}/2027-04-17"
+
+    pdf = c.get(f"{base}/formulaires/CP08", headers=H)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert c.get(f"{base}/formulaires/CP99", headers=H).status_code == 404
+
+    # Formulaires : à temps, hors délai, choix invalide
+    ok = c.put(f"{base}/correspondance/CP08", headers=H, json={"recu_le": "2027-04-10", "votes": {
+        "1": "pour", "2": "contre", "3": "pour", "4": "pour", "5": "abstention", "6": None, "7": "pour"}})
+    assert ok.status_code == 200
+    assert c.put(f"{base}/correspondance/CP13", headers=H, json={"recu_le": "2027-04-13", "mode": "email",
+                 "votes": {str(n): "pour" for n in range(1, 8)}}).status_code == 200
+    tard = c.put(f"{base}/correspondance/CP01", headers=H, json={"recu_le": "2027-04-14", "votes": {"1": "pour"}})
+    assert tard.status_code == 422 and "13/04/2027" in tard.json()["detail"]
+    assert c.put(f"{base}/correspondance/CP01", headers=H,
+                 json={"recu_le": "2027-04-01", "votes": {"1": "peut-être"}}).status_code == 422
+
+    # Présences : le syndic ne peut pas recevoir de mandat ; CP13 vient finalement → son formulaire est écarté
+    pres = {cid: {"mode": "present"} for cid in ["CP01", "CP02", "CP03", "CP04", "CP05", "CP07", "CP09", "CP12", "CP13", "CP14"]}
+    pres["CP06"] = {"mode": "represente", "mandataire": "CP07"}
+    pres["CP10"] = {"mode": "visio"}
+    refus = c.put(f"{base}/presences", headers=H,
+                  json={"presences": {**pres, "CP11": {"mode": "represente", "mandataire": "CP03"}}})
+    assert refus.status_code == 422 and "syndic" in refus.json()["detail"]
+    r = c.put(f"{base}/presences", headers=H, json={"presences": pres}).json()
+    assert any("CP13" in m for m in r["remarques"])
+    f = r["feuille"]
+    assert f["voix_correspondance"] == 450 and f["voix_absentes"] == 790                 # CP08 ; CP11 absent
+    assert f["voix_presentes_representees"] + f["voix_correspondance"] + f["voix_absentes"] == 10000
+    assert c.get(f"{base}/feuille-presence.pdf", headers=H).content[:4] == b"%PDF"
+
+    # PV impossible avant le dépouillement
+    assert c.get(f"{base}/pv.pdf", headers=H).status_code == 409
+
+    # Dépouillement : résolution 7 amendée → le « pour » par correspondance de CP08 devient défaillant
+    dep = c.post(f"{base}/depouillement", headers=H, json={
+        "votes": {"2": {"contre": ["CP14", "CP06"], "abstention": ["CP02"]}, "7": {"contre": ["CP05"]}},
+        "amendees": [7]}).json()
+    r2, r6, r7 = dep["resolutions"][1], dep["resolutions"][5], dep["resolutions"][6]
+    assert r2["decompte"]["contre"] == 1450 + 1260 + 450 and r2["adoptee"]                # CP14, SCI, CP08 (VPC)
+    assert [p["id"] for p in r6["formulaires_sans_choix"]] == ["CP08"]
+    assert [p["id"] for p in r7["defaillants_17_1_A"]] == ["CP08"]
+    assert r7["decompte"]["total_voix"] == 1000                                         # clé ascenseur
+    assert dep["formulaires_ecartes"] == ["CP13"]
+    assert {p["id"] for p in dep["a_notifier"]} >= {"CP14", "CP06", "CP08", "CP11", "CP05"}
+    pv = c.get(f"{base}/pv.pdf", headers=H)
+    assert pv.status_code == 200 and pv.content[:4] == b"%PDF"
+    # Un participant inconnu en séance est refusé
+    assert c.post(f"{base}/depouillement", headers=H,
+                  json={"votes": {"1": {"contre": ["CP11"]}}}).status_code == 422
+    assert c.get(AG, headers=H).json()[0]["depouillee"] is True
+
+
+def test_ag_mandats_et_passerelle_25_1():
+    fiche = FICHE
+    # Plus de 3 mandats : permis seulement si le total ne dépasse pas 10 % des voix
+    pres = {cid: {"mode": "represente", "mandataire": "CP12"} for cid in ["CP01", "CP05", "CP08", "CP13"]}
+    err = assemblee.verifier_mandats(fiche, pres)
+    assert err and "10 %" in err[0]                                                    # 450×4 + 450 = 2250 > 1000
+    # Article 25 manqué avec au moins 1/3 des voix → second vote à l'article 24
+    from datetime import date
+    import tempfile
+    rac = Path(tempfile.mkdtemp())
+    a = assemblee.creer_ag(rac, "mimosas", fiche, date(2027, 5, 20), "18h", "Salle",
+                           [{"titre": "Délégation au conseil syndical", "majorite": "25"}], aujourd_hui=date(2026, 11, 18))
+    presents = ["CP01", "CP02", "CP03", "CP04", "CP05", "CP07", "CP14"]                   # 3740 + 1450 = 5190
+    assemblee.enregistrer_presences(fiche, a, {c_: {"mode": "present"} for c_ in presents})
+    dep = assemblee.depouiller(fiche, a, {1: {"contre": ["CP05"]}})
+    r = dep["resolutions"][0]
+    assert not r["adoptee"] and "second vote" in r["note"]                              # 4740 pour : ≥ 1/3, < 1/2
+    dep = assemblee.depouiller(fiche, a, {1: {"contre": ["CP05"], "second_vote_24": {"contre": ["CP05"]}}})
+    assert dep["resolutions"][0]["adoptee"] and dep["resolutions"][0]["second_vote_24"]["adoptee"]

@@ -51,10 +51,10 @@ a{color:#1E1E1E}footer{margin-top:28px;font-size:12px;color:#6B6A66}
 def page(titre: str, corps: str) -> str:
     return (f'<!doctype html><html lang="fr"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<meta name="robots" content="noindex, nofollow"><title>{escape(titre)} – KoPro</title>'
+            f'<meta name="robots" content="noindex, nofollow"><title>{escape(titre)} – Mitoyen</title>'
             f'<style>{STYLE}</style></head><body><main>'
-            f'<header><span class="marque">KoPro</span></header>{corps}'
-            f'<footer>Lien personnel : ne le transférez pas. Page préparée par l\'assistant KoPro pour le syndic '
+            f'<header><span class="marque">Mitoyen</span></header>{corps}'
+            f'<footer>Lien personnel : ne le transférez pas. Page préparée par l\'assistant Mitoyen pour le syndic '
             f'de votre copropriété.</footer></main></body></html>')
 
 

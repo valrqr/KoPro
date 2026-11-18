@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Logo KoPro" width="200">
+  <img src="docs/logo.svg" alt="Logo Mitoyen" width="200">
 </p>
 
-# KoPro
+# Mitoyen
 
-> **KoPro, l'outil qui va mettre votre vieux syndic KO** 🥊
+> **Partagez les murs, plus les frais de syndic.**
 
 Un assistant open source pour les syndics **bénévoles et coopératifs** de copropriétés de moins de 50 lots.
 
@@ -102,6 +102,15 @@ python tests/test_api.py                                             # les tests
 | GET | `/copros/{copro}/plan.pdf?cotisation=&indexation=` | Projection PDF à joindre à la convocation d'AG |
 | PUT | `/copros/{copro}/plan/lignes/{ligne}` | Avancement d'une ligne : reportée, réalisée (avec le montant payé), abandonnée |
 | POST | `/copros/{copro}/plan/lignes/{ligne}/dossier` | Ouvre le dossier de travaux d'une ligne : devis, comparatif, vote |
+| GET | `/copros/{copro}/ag/ordre-du-jour-type` | Résolutions habituelles d'une AG annuelle, avec les majorités usuelles |
+| POST | `/copros/{copro}/ag` | Prépare une AG : date, lieu, ordre du jour (et une résolution par devis d'un dossier) |
+| GET | `/copros/{copro}/ag/{ag}` | AG, calendrier légal et feuille de présence |
+| GET | `/copros/{copro}/ag/{ag}/formulaires/{id}` | Formulaire de vote par correspondance pré-rempli d'un copropriétaire |
+| PUT | `/copros/{copro}/ag/{ag}/correspondance/{id}` | Enregistre un formulaire reçu (refusé après le délai de 3 jours francs) |
+| PUT | `/copros/{copro}/ag/{ag}/presences` | Présents, visio et mandats, avec les contrôles de l'article 22 |
+| GET | `/copros/{copro}/ag/{ag}/feuille-presence.pdf` | Feuille de présence à faire émarger |
+| POST | `/copros/{copro}/ag/{ag}/depouillement` | Votes en séance et par correspondance → résultat de chaque résolution |
+| GET | `/copros/{copro}/ag/{ag}/pv.pdf` | Brouillon de procès-verbal, à relire et faire signer |
 | POST | `/copros/{copro}/appels/{exercice}/T{n}?final=false` | Génère avis + récap, renvoie la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}` | Relit la liste d'envoi |
 | GET | `/copros/{copro}/appels/{exercice}/T{n}/recap` | PDF de la récap à signer |
@@ -109,7 +118,7 @@ python tests/test_api.py                                             # les tests
 
 ## Travaux et devis
 
-Pour une intervention non prévue, le syndic ouvre un **dossier de travaux** et y dépose plusieurs devis en PDF. KoPro :
+Pour une intervention non prévue, le syndic ouvre un **dossier de travaux** et y dépose plusieurs devis en PDF. Mitoyen :
 
 - **compare les devis** : montants TTC, écarts avec le moins cher, délais, devis expirés ou incomplets ;
 - **calcule la quote-part de chaque copropriétaire** pour chaque devis, au centime, selon la clé de répartition ;
@@ -118,7 +127,7 @@ Pour une intervention non prévue, le syndic ouvre un **dossier de travaux** et 
 
 ### La vérification des entreprises
 
-Pour chaque devis, KoPro vérifie l'entreprise à partir de **sources publiques françaises, gratuites et sans clé** :
+Pour chaque devis, Mitoyen vérifie l'entreprise à partir de **sources publiques françaises, gratuites et sans clé** :
 
 | Vérification | Source |
 |---|---|
@@ -127,11 +136,11 @@ Pour chaque devis, KoPro vérifie l'entreprise à partir de **sources publiques 
 | Procédures collectives (sauvegarde, redressement, liquidation) sur 5 ans | [BODACC](https://www.bodacc.fr) |
 | Mention d'une assurance décennale | Le devis lui-même |
 
-Les constats figurent dans le comparatif PDF et sont transmis à l'IA pour le résumé. Une source injoignable est signalée comme « non consultée », jamais présentée comme un résultat rassurant. KoPro ne reprend aucun avis en ligne : seuls des registres officiels sont consultés.
+Les constats figurent dans le comparatif PDF et sont transmis à l'IA pour le résumé. Une source injoignable est signalée comme « non consultée », jamais présentée comme un résultat rassurant. Mitoyen ne reprend aucun avis en ligne : seuls des registres officiels sont consultés.
 
 ### Le résumé IA des devis
 
-Pour les copropriétaires qui n'ont pas le temps de lire trois devis, KoPro peut faire rédiger par **Mistral** (IA française, hébergée en Europe) un résumé de 2 ou 3 phrases sur ce qui distingue les devis : prix, prestations incluses ou exclues, garanties, délais, validité, assurance.
+Pour les copropriétaires qui n'ont pas le temps de lire trois devis, Mitoyen peut faire rédiger par **Mistral** (IA française, hébergée en Europe) un résumé de 2 ou 3 phrases sur ce qui distingue les devis : prix, prestations incluses ou exclues, garanties, délais, validité, assurance.
 
 - **Neutre** : l'IA décrit, elle ne recommande jamais. Une formulation de recommandation bloque la validation.
 - **Fidèle** : elle ne s'appuie que sur le texte des devis. Un montant qui n'y figure pas est signalé, et une information absente est dite « non précisée ».
@@ -142,7 +151,7 @@ Le texte des devis est envoyé à Mistral pour l'analyse. Activation : `MISTRAL_
 
 **Démonstration** : avec le moteur lancé, `bash scripts/demo_travaux.sh` crée un dossier sur la copro fictive, dépose les 3 devis d'exemple de `exemples/devis/`, demande le résumé à Mistral puis télécharge le comparatif PDF.
 
-> ⚖️ En copropriété, la plupart des travaux se décident en assemblée générale. L'aiguillage de KoPro est indicatif et ne remplace pas l'avis d'un juriste ou de l'ADIL. Le vote (sondage consultatif, conseil syndical, dépouillement d'AG) est décrit plus bas.
+> ⚖️ En copropriété, la plupart des travaux se décident en assemblée générale. L'aiguillage de Mitoyen est indicatif et ne remplace pas l'avis d'un juriste ou de l'ADIL. Le vote (sondage consultatif, conseil syndical, dépouillement d'AG) est décrit plus bas.
 
 ### Le vote
 
@@ -160,9 +169,9 @@ Pour plusieurs devis, chaque devis fait l'objet d'une résolution, votées dans 
 
 ## Le plan de travaux vivant
 
-Depuis 2025, toute copropriété de plus de 15 ans doit disposer d'un projet de plan pluriannuel de travaux (article 14-2 de la loi de 1965) : la liste des travaux à prévoir sur 10 ans, leur coût estimé et leur priorité. Chez un syndic classique, ce document finit dans un tiroir. KoPro s'en sert pour piloter la copropriété :
+Depuis 2025, toute copropriété de plus de 15 ans doit disposer d'un projet de plan pluriannuel de travaux (article 14-2 de la loi de 1965) : la liste des travaux à prévoir sur 10 ans, leur coût estimé et leur priorité. Chez un syndic classique, ce document finit dans un tiroir. Mitoyen s'en sert pour piloter la copropriété :
 
-| Question | Ce que calcule KoPro |
+| Question | Ce que calcule Mitoyen |
 |---|---|
 | **Le fonds de travaux suffira-t-il ?** | Projection année par année : ce que le fonds paie, ce qu'il faudra appeler en plus, le solde restant |
 | **Quel minimum légal ?** | 5 % du budget prévisionnel et, une fois le plan adopté en AG, 2,5 % du montant de ses travaux |
@@ -176,6 +185,23 @@ Le plan voté reste dans la fiche (`plan_travaux` dans `config/<copro>.yaml`). S
 
 > Projection indicative, établie à partir des estimations du plan, hors aides et hors intérêts du compte. Elle ne remplace ni l'avis d'un professionnel ni celui de l'ADIL.
 
+## L'assemblée générale sans papier
+
+Mitoyen prépare toute l'assemblée générale, du calendrier au procès-verbal, dans le respect de la loi du 10 juillet 1965 et du décret du 17 mars 1967 :
+
+| Étape | Ce que fait Mitoyen |
+|---|---|
+| **Calendrier** | Dates limites de convocation (21 jours), de réception des votes par correspondance (3 jours francs), de notification du procès-verbal (1 mois) ; alerte si l'AG annuelle dépasse les 6 mois après la clôture |
+| **Vote par correspondance** | Un formulaire pré-rempli par copropriétaire, sur la structure du modèle de l'arrêté du 2 juillet 2020 ; les formulaires arrivés hors délai sont refusés |
+| **Présences et mandats** | Présents, visio, représentés ; le syndic ne peut pas recevoir de mandat, et au-delà de 3 mandats le total ne doit pas dépasser 10 % des voix |
+| **Feuille de présence** | Avec la date de réception de chaque formulaire ; celui d'un copropriétaire finalement présent est écarté |
+| **Dépouillement** | En séance, on note qui vote contre et qui s'abstient ; une résolution amendée transforme le « pour » par correspondance en défaillance ; majorités 24, 25, 25-1 et 26, clés spéciales |
+| **Procès-verbal** | Brouillon avec les noms et les voix des opposants, abstentionnistes et défaillants, et la liste des copropriétaires à qui le notifier |
+
+<p align="center"><img src="docs/apercu_formulaire_vote.png" alt="Formulaire de vote par correspondance pré-rempli" width="420"></p>
+
+> Le formulaire reprend la structure et les mentions du modèle officiel : avant un usage réel, comparez-le à l'annexe de l'arrêté du 2 juillet 2020 sur Légifrance. Une case laissée vide n'est pas comptée et signalée au bureau, la loi ne disant pas comment la traiter. Le procès-verbal signé reste la seule référence.
+
 ## Données personnelles
 
 - Les fiches des vraies copros et le dossier `out/` sont exclus du dépôt (`.gitignore`).
@@ -184,7 +210,7 @@ Le plan voté reste dans la fiche (`plan_travaux` dans `config/<copro>.yaml`). S
 
 ## Comment ce projet est construit
 
-KoPro est développé avec l'aide d'une IA (Claude, d'Anthropic), qui a écrit une grande partie du code.
+Mitoyen est développé avec l'aide d'une IA (Claude, d'Anthropic), qui a écrit une grande partie du code.
 Mon rôle : définir le besoin et le périmètre, choisir le cadre juridique et l'architecture,
 tester, déployer et faire évoluer l'outil. Chaque brique est relue, testée et documentée avant publication.
 
@@ -194,4 +220,4 @@ Les signalements de bugs, d'erreurs juridiques et les idées sont les bienvenus.
 
 ## Licence
 
-AGPL-3.0. L'auteur se réserve la possibilité de proposer aussi KoPro sous d'autres conditions ; la version AGPL reste disponible.
+AGPL-3.0. L'auteur se réserve la possibilité de proposer aussi Mitoyen sous d'autres conditions ; la version AGPL reste disponible.

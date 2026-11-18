@@ -1,4 +1,4 @@
-# KoPro — n8n (orchestration) + moteur (Python/FastAPI)
+# Mitoyen — n8n (orchestration) + moteur (Python/FastAPI)
 #
 #   cp .env.example .env      # puis remplir les valeurs
 #   docker compose up -d --build

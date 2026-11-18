@@ -1,6 +1,6 @@
-# Contribuer à KoPro
+# Contribuer à Mitoyen
 
-Merci de vouloir améliorer KoPro ! Ce document explique comment contribuer et à quelles conditions.
+Merci de vouloir améliorer Mitoyen ! Ce document explique comment contribuer et à quelles conditions.
 
 ## Les contributions bienvenues sans condition
 
@@ -10,11 +10,11 @@ Tout le monde peut, sans rien signer :
 - **signaler une erreur juridique** : délai, majorité, obligation mal interprétée. Merci d'indiquer la source (article de loi, fiche ANIL ou ADIL, service-public.fr) ;
 - **proposer une idée** ou partager votre expérience de syndic bénévole ou coopératif.
 
-Ces retours sont précieux : KoPro s'adresse à des copropriétaires, pas à des juristes, et chaque erreur signalée protège quelqu'un.
+Ces retours sont précieux : Mitoyen s'adresse à des copropriétaires, pas à des juristes, et chaque erreur signalée protège quelqu'un.
 
 ## Les contributions de code : l'accord de contribution
 
-KoPro est publié sous licence **AGPL-3.0** et le restera. Son auteur souhaite aussi pouvoir, plus tard, proposer KoPro sous d'autres conditions (par exemple une licence commerciale ou un service hébergé) pour financer le projet.
+Mitoyen est publié sous licence **AGPL-3.0** et le restera. Son auteur souhaite aussi pouvoir, plus tard, proposer Mitoyen sous d'autres conditions (par exemple une licence commerciale ou un service hébergé) pour financer le projet.
 
 Pour que ce soit possible, toute contribution de code, de documentation ou de données (*pull request*) n'est acceptée qu'avec l'accord suivant. Vous l'acceptez en recopiant la phrase indiquée plus bas dans la description de votre *pull request*.
 
@@ -31,7 +31,7 @@ Pour que ce soit possible, toute contribution de code, de documentation ou de do
 
 ### La phrase à recopier
 
-> J'ai lu le fichier CONTRIBUTING.md et j'accepte l'accord de contribution de KoPro pour cette contribution et les suivantes.
+> J'ai lu le fichier CONTRIBUTING.md et j'accepte l'accord de contribution de Mitoyen pour cette contribution et les suivantes.
 
 Sans cette phrase, la *pull request* ne pourra pas être intégrée. Elle reste bien sûr consultable, et l'idée qu'elle porte peut être reprise autrement.
 
@@ -49,4 +49,4 @@ Sans cette phrase, la *pull request* ne pourra pas être intégrée. Elle reste 
 
 ## Questions
 
-Ouvrez une *issue* sur [github.com/valrqr/kopro](https://github.com/valrqr/kopro).
+Ouvrez une *issue* sur [github.com/valrqr/mitoyen](https://github.com/valrqr/mitoyen).

@@ -1,5 +1,5 @@
 {
-  "name": "KoPro – Échéancier hebdomadaire",
+  "name": "Mitoyen – Échéancier hebdomadaire",
   "nodes": [
     {
       "parameters": {
@@ -155,9 +155,9 @@
       "parameters": {
         "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
         "toEmail": "={{ $('Config').first().json.email_test || $json.syndic.email }}",
-        "subject": "={{ $('Config').first().json.email_test ? '[TEST] ' : '' }}[KoPro] {{ $json.copropriete }} : {{ $json.nb_alertes }} échéance(s){{ $json.nb_urgentes > 0 ? ', dont ' + $json.nb_urgentes + ' urgente(s)' : '' }}",
+        "subject": "={{ $('Config').first().json.email_test ? '[TEST] ' : '' }}[Mitoyen] {{ $json.copropriete }} : {{ $json.nb_alertes }} échéance(s){{ $json.nb_urgentes > 0 ? ', dont ' + $json.nb_urgentes + ' urgente(s)' : '' }}",
         "emailFormat": "html",
-        "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:680px;color:#1E1E1E\"><h2 style=\"margin:0 0 4px\">{{ $json.copropriete }}</h2><p style=\"margin:0 0 16px;color:#666\">Échéancier au {{ $json.au_fr }} · horizon {{ $json.horizon_jours }} jours</p>{{ $json.nb_urgentes > 0 ? '<p style=\"background:#FDEDEC;border-left:4px solid #C0392B;padding:10px 12px;margin:0 0 16px\"><b>' + $json.nb_urgentes + ' échéance(s) urgente(s)</b> dans les 30 prochains jours.</p>' : '' }}<table style=\"border-collapse:collapse;width:100%;font-size:14px\"><tr style=\"text-align:left;color:#666\"><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Niveau</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Date</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Échéance</th></tr>{{ $json.alertes.map(a => { const st = {urgent: ['Urgent', '#C0392B'], a_prevoir: ['À prévoir', '#B9770E'], info: ['Info', '#5D6D7E'], depasse: ['Dépassé', '#5D6D7E']}[a.niveau] || [a.niveau, '#5D6D7E']; return '<tr>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><span style=\"background:' + st[1] + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;white-space:nowrap\">' + st[0] + '</span></td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB;white-space:nowrap\">' + (a.date_fr || '—') + (a.jours !== null && a.jours >= 0 ? '<br><span style=\"color:#888;font-size:12px\">dans ' + a.jours + ' j</span>' : '') + '</td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><b>' + a.titre + '</b><br><span style=\"color:#444\">' + a.message + '</span></td>' + '</tr>'; }).join('') }}</table><p style=\"margin-top:20px;font-size:12px;color:#888\">Préparé par l'assistant KoPro. Vérifiez chaque échéance avant d'agir.</p></div>",
+        "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:680px;color:#1E1E1E\"><h2 style=\"margin:0 0 4px\">{{ $json.copropriete }}</h2><p style=\"margin:0 0 16px;color:#666\">Échéancier au {{ $json.au_fr }} · horizon {{ $json.horizon_jours }} jours</p>{{ $json.nb_urgentes > 0 ? '<p style=\"background:#FDEDEC;border-left:4px solid #C0392B;padding:10px 12px;margin:0 0 16px\"><b>' + $json.nb_urgentes + ' échéance(s) urgente(s)</b> dans les 30 prochains jours.</p>' : '' }}<table style=\"border-collapse:collapse;width:100%;font-size:14px\"><tr style=\"text-align:left;color:#666\"><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Niveau</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Date</th><th style=\"padding:8px;border-bottom:2px solid #1E1E1E\">Échéance</th></tr>{{ $json.alertes.map(a => { const st = {urgent: ['Urgent', '#C0392B'], a_prevoir: ['À prévoir', '#B9770E'], info: ['Info', '#5D6D7E'], depasse: ['Dépassé', '#5D6D7E']}[a.niveau] || [a.niveau, '#5D6D7E']; return '<tr>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><span style=\"background:' + st[1] + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;white-space:nowrap\">' + st[0] + '</span></td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB;white-space:nowrap\">' + (a.date_fr || '—') + (a.jours !== null && a.jours >= 0 ? '<br><span style=\"color:#888;font-size:12px\">dans ' + a.jours + ' j</span>' : '') + '</td>' + '<td style=\"padding:8px;border-bottom:1px solid #E5E8EB\"><b>' + a.titre + '</b><br><span style=\"color:#444\">' + a.message + '</span></td>' + '</tr>'; }).join('') }}</table><p style=\"margin-top:20px;font-size:12px;color:#888\">Préparé par l'assistant Mitoyen. Vérifiez chaque échéance avant d'agir.</p></div>",
         "options": {}
       },
       "id": "a8e5cb73-5583-4055-86e4-e09603a99186",
@@ -188,7 +188,7 @@
     },
     {
       "parameters": {
-        "content": "## Échéancier hebdomadaire KoPro\nChaque lundi à 8h, le syndic de chaque copro reçoit ses échéances : contrats, diagnostics, AG, mandat.\n\n- **email_test** rempli : tous les mails arrivent à cette adresse. Vide : chaque syndic reçoit le sien\n- **au** vide = aujourd'hui. Pour tester, mets une date, ex. 2027-06-01\n- Pense à **activer** le workflow (interrupteur en haut à droite)",
+        "content": "## Échéancier hebdomadaire Mitoyen\nChaque lundi à 8h, le syndic de chaque copro reçoit ses échéances : contrats, diagnostics, AG, mandat.\n\n- **email_test** rempli : tous les mails arrivent à cette adresse. Vide : chaque syndic reçoit le sien\n- **au** vide = aujourd'hui. Pour tester, mets une date, ex. 2027-06-01\n- Pense à **activer** le workflow (interrupteur en haut à droite)",
         "height": 220,
         "width": 460
       },

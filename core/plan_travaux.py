@@ -17,7 +17,7 @@ en PDF dans un tiroir. Ici, il sert à piloter :
        ouvre un dossier, et le circuit devis → vote prend le relais.
 
 Le plan voté reste dans la fiche (config/). Son suivi (dossier ouvert, travaux
-réalisés, report) est tenu par KoPro dans data/<copro>/plan_suivi.json.
+réalisés, report) est tenu par Mitoyen dans data/<copro>/plan_suivi.json.
 
 Rappel : projection indicative, établie à partir des estimations du plan.
 Ce n'est ni un avis juridique ni un audit technique.

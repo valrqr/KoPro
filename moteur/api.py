@@ -33,6 +33,16 @@ Routes :
     GET  /copros/{copro}/plan.pdf?cotisation=&indexation=   projection à diffuser ou joindre à la convocation
     PUT  /copros/{copro}/plan/lignes/{ligne}                avancement d'une ligne (reportée, réalisée…)
     POST /copros/{copro}/plan/lignes/{ligne}/dossier        ouvre le dossier de travaux d'une ligne du plan
+    GET  /copros/{copro}/ag                                 assemblées générales préparées
+    GET  /copros/{copro}/ag/ordre-du-jour-type              résolutions habituelles d'une AG annuelle
+    POST /copros/{copro}/ag                                 prépare une AG (date, lieu, ordre du jour)
+    GET  /copros/{copro}/ag/{ag}                            AG + calendrier légal + feuille de présence
+    GET  /copros/{copro}/ag/{ag}/formulaires/{id}           formulaire de vote par correspondance pré-rempli (PDF)
+    PUT  /copros/{copro}/ag/{ag}/correspondance/{id}        enregistre un formulaire reçu (refusé hors délai)
+    PUT  /copros/{copro}/ag/{ag}/presences                  présents, visio, mandats (contrôle de l'art. 22)
+    GET  /copros/{copro}/ag/{ag}/feuille-presence.pdf       feuille de présence à faire émarger
+    POST /copros/{copro}/ag/{ag}/depouillement              votes en séance + par correspondance → résultats
+    GET  /copros/{copro}/ag/{ag}/pv.pdf                     brouillon de procès-verbal (filigrane PROJET)
     GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
@@ -58,6 +68,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "core"))
 from avis_appel import FicheInvalide, dossier_appel, generer_appel  # noqa: E402
 from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche, echeances, valider  # noqa: E402
+import ag as assemblee  # noqa: E402
 import plan_travaux  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
@@ -432,6 +443,163 @@ def ouvrir_dossier_plan(copro: str = Copro, ligne: str = Ligne) -> dict:
         return plan_travaux.ouvrir_dossier(DOSSIER_DATA, copro, fiche, ligne)
     except (plan_travaux.PlanInvalide, travaux.DossierInvalide) as e:
         raise HTTPException(409 if "déjà" in str(e) else 422, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Assemblée générale sans papier
+# --------------------------------------------------------------------------- #
+ID_AG = r"^\d{4}-\d{2}-\d{2}(-[a-z0-9-]{1,30})?$"
+ID_COPROPRIETAIRE = r"^[A-Za-z0-9_-]{1,20}$"
+AgId = PathParam(..., pattern=ID_AG)
+Coproprietaire = PathParam(..., pattern=ID_COPROPRIETAIRE)
+
+
+class ResolutionAG(BaseModel):
+    titre: str = Field(..., min_length=3, max_length=200)
+    texte: str = Field("", max_length=4000)
+    majorite: str = Field("24", description="24 | 25 | 26")
+    cle: str = Field("generales", description="Clé de répartition : seuls les copropriétaires concernés votent")
+
+
+class NouvelleAG(BaseModel):
+    date: date
+    heure: str = Field(..., max_length=20, examples=["18h30"])
+    lieu: str = Field(..., min_length=3, max_length=200)
+    titre: str = Field("Assemblée générale ordinaire", max_length=120)
+    annuelle: bool = True
+    visio: str | None = Field(None, max_length=300, description="Moyens de visio décidés par une AG précédente")
+    suffixe: str = Field("", pattern=r"^[a-z0-9-]{0,30}$", description="Pour distinguer deux AG le même jour")
+    resolutions: list[ResolutionAG] = Field(default_factory=list)
+    dossiers: list[str] = Field(default_factory=list, description="Dossiers de travaux : une résolution par devis")
+
+
+def ag_de(copro: str, ag_id: str) -> dict:
+    try:
+        return assemblee.charger_ag(DOSSIER_DATA, copro, ag_id)
+    except (FileNotFoundError, assemblee.AGInvalide):
+        raise HTTPException(404, f"Aucune AG « {ag_id} »")
+
+
+@app.get("/copros/{copro}/ag", dependencies=[Depends(verifier_cle)])
+def lister_ag(copro: str = Copro) -> list[dict]:
+    fiche_de(copro)
+    return assemblee.lister_ag(DOSSIER_DATA, copro)
+
+
+@app.get("/copros/{copro}/ag/ordre-du-jour-type", dependencies=[Depends(verifier_cle)])
+def odj_type(copro: str = Copro) -> dict:
+    fiche = fiche_de(copro)
+    adopte = (plan_travaux.plan_de(fiche) or {}).get("statut") == "adopte"
+    return {"resolutions": assemblee.ordre_du_jour_type(fiche, adopte),
+            "avertissement": "Majorités usuelles, à vérifier selon le règlement de copropriété et auprès de l'ADIL."}
+
+
+@app.post("/copros/{copro}/ag", status_code=201, dependencies=[Depends(verifier_cle)])
+def creer_ag(corps: NouvelleAG, copro: str = Copro) -> dict:
+    fiche = fiche_de(copro)
+    resolutions = [r.model_dump() for r in corps.resolutions]
+    for did in corps.dossiers:
+        _, d = dossier_de(copro, did) if re.match(ID_DOSSIER, did) else (None, None)
+        if d is None:
+            raise HTTPException(422, f"Dossier de travaux invalide : {did}")
+        resolutions += assemblee.resolutions_depuis_dossier(d)
+    try:
+        a = assemblee.creer_ag(DOSSIER_DATA, copro, fiche, corps.date, corps.heure, corps.lieu, resolutions,
+                               corps.titre, corps.annuelle, corps.visio, corps.suffixe)
+    except assemblee.AGInvalide as e:
+        raise HTTPException(422, str(e))
+    return {**a, "calendrier": assemblee.calendrier(fiche, a)}
+
+
+@app.get("/copros/{copro}/ag/{ag_id}", dependencies=[Depends(verifier_cle)])
+def voir_ag(copro: str = Copro, ag_id: str = AgId, au: date | None = Query(None)) -> dict:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    return {**a, "calendrier": assemblee.calendrier(fiche, a, au), "feuille": assemblee.feuille_presence(fiche, a)}
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/formulaires/{cid}", dependencies=[Depends(verifier_cle)])
+def formulaire_vpc(copro: str = Copro, ag_id: str = AgId, cid: str = Coproprietaire) -> FileResponse:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    sortie = DOSSIER_SORTIE / copro / "ag" / ag_id
+    sortie.mkdir(parents=True, exist_ok=True)
+    try:
+        chemin = assemblee.generer_formulaire(fiche, a, cid, sortie / f"formulaire_vote_{cid}.pdf")
+    except assemblee.AGInvalide as e:
+        raise HTTPException(404, str(e))
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class FormulaireRecu(BaseModel):
+    votes: dict[str, str | None] = Field(..., description="{numéro de résolution: pour | contre | abstention | null}")
+    recu_le: date
+    mode: str = Field("courrier", description="courrier | email | main_propre")
+
+
+@app.put("/copros/{copro}/ag/{ag_id}/correspondance/{cid}", dependencies=[Depends(verifier_cle)])
+def recevoir_formulaire(corps: FormulaireRecu, copro: str = Copro, ag_id: str = AgId,
+                        cid: str = Coproprietaire) -> dict:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    try:
+        f = assemblee.enregistrer_correspondance(fiche, a, cid, corps.votes, corps.recu_le, corps.mode)
+    except (assemblee.AGInvalide, ValueError) as e:
+        raise HTTPException(422, str(e))
+    assemblee.sauver_ag(DOSSIER_DATA, copro, a)
+    return {"coproprietaire": cid, **f}
+
+
+class Presences(BaseModel):
+    presences: dict[str, dict] = Field(..., description='{"CP06": {"mode": "represente", "mandataire": "CP07"}}')
+
+
+@app.put("/copros/{copro}/ag/{ag_id}/presences", dependencies=[Depends(verifier_cle)])
+def enregistrer_presences(corps: Presences, copro: str = Copro, ag_id: str = AgId) -> dict:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    try:
+        remarques = assemblee.enregistrer_presences(fiche, a, corps.presences)
+    except assemblee.AGInvalide as e:
+        raise HTTPException(422, str(e))
+    assemblee.sauver_ag(DOSSIER_DATA, copro, a)
+    return {"remarques": remarques, "feuille": assemblee.feuille_presence(fiche, a)}
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/feuille-presence.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_presence(copro: str = Copro, ag_id: str = AgId) -> FileResponse:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    sortie = DOSSIER_SORTIE / copro / "ag" / ag_id
+    sortie.mkdir(parents=True, exist_ok=True)
+    chemin = assemblee.generer_feuille_presence(fiche, a, sortie / "feuille_presence.pdf")
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class Seance(BaseModel):
+    votes: dict[str, dict] = Field(default_factory=dict,
+                                   description='{"2": {"contre": ["CP14"], "abstention": ["CP02"]}} : '
+                                               'les autres participants en séance votent pour')
+    amendees: list[int] = Field(default_factory=list, description="Résolutions amendées pendant la séance")
+
+
+@app.post("/copros/{copro}/ag/{ag_id}/depouillement", dependencies=[Depends(verifier_cle)])
+def depouiller_ag_complete(corps: Seance, copro: str = Copro, ag_id: str = AgId) -> dict:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    try:
+        dep = assemblee.depouiller(fiche, a, corps.votes, corps.amendees)
+    except (assemblee.AGInvalide, ValueError) as e:
+        raise HTTPException(422, str(e))
+    a["depouillement"] = {"votes": corps.votes, "amendees": corps.amendees, "le": date.today().isoformat()}
+    assemblee.sauver_ag(DOSSIER_DATA, copro, a)
+    return dep
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/pv.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_pv(copro: str = Copro, ag_id: str = AgId) -> FileResponse:
+    fiche, a = fiche_de(copro), ag_de(copro, ag_id)
+    if not a.get("depouillement"):
+        raise HTTPException(409, "Le dépouillement n'a pas encore été fait (POST …/depouillement)")
+    dep = assemblee.depouiller(fiche, a, a["depouillement"]["votes"], a["depouillement"]["amendees"])
+    sortie = DOSSIER_SORTIE / copro / "ag" / ag_id
+    sortie.mkdir(parents=True, exist_ok=True)
+    chemin = assemblee.generer_pv(fiche, a, dep, sortie / "proces_verbal_projet.pdf")
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
 
 
 # --------------------------------------------------------------------------- #

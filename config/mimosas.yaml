@@ -186,7 +186,7 @@ diagnostics:
 #     Montants TTC estimés aux prix de l'année d'élaboration.
 #     categorie : securite | conservation | energie | confort
 #     priorite  : 1 (indispensable) à 3 (souhaitable)
-#     Le suivi (dossier ouvert, travaux réalisés) est tenu par KoPro dans data/,
+#     Le suivi (dossier ouvert, travaux réalisés) est tenu par Mitoyen dans data/,
 #     cette section reste le plan tel qu'il a été présenté à l'AG.
 # -----------------------------------------------------------------------------
 plan_travaux:

@@ -1,5 +1,5 @@
 """
-vote.py — Moteur de vote de KoPro : qui vote, avec combien de voix, et quelle résolution est adoptée.
+vote.py — Moteur de vote de Mitoyen : qui vote, avec combien de voix, et quelle résolution est adoptée.
 
 Trois usages :
     1. le SONDAGE CONSULTATIF : avis des copropriétaires sur des devis, en tantièmes, sans valeur de décision

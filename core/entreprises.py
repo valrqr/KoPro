@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 
-USER_AGENT = "KoPro/0.1 (assistant open source pour syndics benevoles; https://github.com/valrqr/kopro)"
+USER_AGENT = "Mitoyen/0.1 (assistant open source pour syndics benevoles; https://github.com/valrqr/mitoyen)"
 URL_REGISTRE = "https://recherche-entreprises.api.gouv.fr/search"
 URL_BODACC = ("https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/"
               "annonces-commerciales/records")
