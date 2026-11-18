@@ -22,6 +22,12 @@ copropriete:
   nb_lots_principaux: 16                                # appartements
   nb_lots_total: 24                                     # + caves et parkings
   batiments: [A]
+  # Pour la fiche synthétique (décret n° 2016-1822) :
+  periode_construction: "1975 à 1993"   # avant 1949 | 1949 à 1960 | 1961 à 1974 | 1975 à 1993 | 1994 à 2000 | 2001 à 2010 | à partir de 2011
+  chauffage: individuel                 # individuel | collectif | mixte | aucun
+  energie_chauffage_collectif: null     # si chauffage collectif non urbain : gaz, fioul, électricité, bois…
+  personnel_employe: false              # gardien, employé d'immeuble…
+  siret_syndicat: null                  # le cas échéant
 
 # -----------------------------------------------------------------------------
 # 2. Gouvernance
@@ -156,6 +162,20 @@ budget_previsionnel:
     - { libelle: "Frais bancaires et assurance RC",  cle: generales, montant: 400 }
     - { libelle: "Maintenance ascenseur",            cle: ascenseur, montant: 2400 }
     - { libelle: "Électricité ascenseur",            cle: ascenseur, montant: 600 }
+
+# Comptes du dernier exercice clos et approuvé en AG (fiche synthétique, dossier
+# de vente). À reprendre du procès-verbal de l'AG qui a approuvé les comptes.
+comptes_approuves:
+  exercice: 2025
+  debut: 2025-01-01
+  fin: 2025-12-31
+  ag_approbation: 2026-05-20
+  charges_courantes: 18650.40           # charges du budget prévisionnel
+  charges_travaux_exceptionnelles: 0    # charges hors budget (travaux, opérations exceptionnelles)
+  dettes_fournisseurs: 1240.00          # fournisseurs, rémunérations et autres, à la clôture
+  impayes: 980.00                       # charges impayées par les copropriétaires, à la clôture
+  nb_debiteurs_plus_300: 1              # copropriétaires débiteurs de plus de 300 €
+  fonds_travaux: 5600.00                # montant du fonds de travaux à la clôture
 
 # Fonds de travaux (art. 14-2 loi 1965) : cotisation annuelle au moins égale à
 # 5 % du budget prévisionnel et, une fois un plan de travaux adopté en AG,

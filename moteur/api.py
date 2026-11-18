@@ -53,6 +53,10 @@ Routes :
     POST /copros/{copro}/envois                             inscrit un envoi au registre
     PUT  /copros/{copro}/envois/{id}                        date de première présentation, statut, n° de recommandé
     GET  /copros/{copro}/ag/{ag}/convocations               chaque copropriétaire a-t-il été convoqué à temps ?
+    GET  /copros/{copro}/fiche-synthetique?au=              fiche synthétique (décret 2016-1822), données manquantes
+    GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
+    POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
+    GET  /copros/{copro}/ventes/{id}.zip                    archive du dossier, prête à transmettre au notaire
     GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
@@ -81,6 +85,7 @@ from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche
 import ag as assemblee  # noqa: E402
 import papier  # noqa: E402
 import plan_travaux  # noqa: E402
+import vente  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -893,6 +898,64 @@ def _page(copro, dossier_id, sid, jeton, message=None) -> HTMLResponse:
 
 Jeton = PathParam(..., pattern=JETON)
 Sid = PathParam(..., pattern=ID_SONDAGE)
+
+
+# --------------------------------------------------------------------------- #
+# Dossier de vente (art. L. 721-2 du CCH)
+# --------------------------------------------------------------------------- #
+ID_VENTE = r"^\d{8}-lots(-\d{1,4}){1,20}$"
+
+
+@app.get("/copros/{copro}/fiche-synthetique", dependencies=[Depends(verifier_cle)])
+def fiche_synthetique(copro: str = Copro, au: date | None = Query(None)) -> dict:
+    return vente.fiche_synthetique(fiche_de(copro), au)
+
+
+@app.get("/copros/{copro}/fiche-synthetique.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_fiche_synthetique(copro: str = Copro, au: date | None = Query(None)) -> FileResponse:
+    jour = au or date.today()
+    sortie = DOSSIER_SORTIE / copro / "vente"
+    sortie.mkdir(parents=True, exist_ok=True)
+    chemin = vente.generer_fiche_synthetique(fiche_de(copro), sortie / f"fiche_synthetique_{jour:%Y%m%d}.pdf", jour)
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class ChargesExercice(BaseModel):
+    exercice: int = Field(..., ge=2000, le=2100)
+    budget: Decimal = Field(Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    hors_budget: Decimal = Field(Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+
+
+class DemandeVente(BaseModel):
+    lots: list[int] = Field(..., min_length=1, max_length=20)
+    charges_payees: list[ChargesExercice] = Field(default_factory=list, max_length=2)
+    impayes_vendeur: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
+    acquereur_coproprietaire: bool = False
+    au: date | None = None
+
+
+@app.post("/copros/{copro}/ventes", dependencies=[Depends(verifier_cle)])
+def creer_dossier_vente(corps: DemandeVente, copro: str = Copro) -> dict:
+    """Les comptes du vendeur (charges payées, impayés) viennent de la comptabilité
+    du syndic ; sans eux, le dossier est produit et les rubriques sont marquées
+    « à compléter »."""
+    comptes = {"charges_payees": [c.model_dump() for c in corps.charges_payees],
+               "impayes_vendeur": corps.impayes_vendeur}
+    try:
+        r = vente.generer_dossier(fiche_de(copro), corps.lots, DOSSIER_SORTIE / copro / "ventes", DOSSIER_DATA,
+                                  copro, comptes, corps.acquereur_coproprietaire, corps.au)
+    except vente.VenteInvalide as e:
+        raise HTTPException(422, str(e))
+    r.pop("chemin_archive")
+    return _json({**r, "telechargement": f"/copros/{copro}/ventes/{r['id']}.zip"})
+
+
+@app.get("/copros/{copro}/ventes/{vente_id}.zip", dependencies=[Depends(verifier_cle)])
+def zip_dossier_vente(copro: str = Copro, vente_id: str = PathParam(..., pattern=ID_VENTE)) -> FileResponse:
+    chemin = DOSSIER_SORTIE / copro / "ventes" / vente_id / f"dossier_vente_{vente_id}.zip"
+    if not chemin.is_file():
+        raise HTTPException(404, "Dossier de vente introuvable")
+    return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
 
 
 @app.get("/vote/{copro}/{dossier_id}/{sid}/{jeton}", response_class=HTMLResponse, include_in_schema=False)

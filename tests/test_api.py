@@ -801,3 +801,81 @@ def test_papier_mandat_sepa_et_lot_postal():
     assert r["nb_courriers"] == 2 and len(r["registre"]) == 2
     from pypdf import PdfReader
     assert len(PdfReader(r["pdf"]).pages) % 2 == 0                                    # recto-verso : nombre pair
+
+
+# --------------------------------------------------------------------------- #
+# Dossier de vente
+# --------------------------------------------------------------------------- #
+def test_vente_fiche_synthetique():
+    r = c.get("/copros/mimosas/fiche-synthetique", params={"au": "2026-11-18"}, headers=H).json()
+    assert list(r["rubriques"]) == ["Identification de la copropriété", "Identité du syndic", "Organisation juridique",
+                                    "Caractéristiques techniques", "Équipements", "Caractéristiques financières"]
+    assert r["manquants"] == [] and not r["allegee"]
+    fin = dict(r["rubriques"]["Caractéristiques financières"])
+    assert fin["Copropriétaires débiteurs de plus de 300 €"] == "1"
+    pdf = c.get("/copros/mimosas/fiche-synthetique.pdf", headers=H)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
+def test_vente_fiche_synthetique_signale_les_manques():
+    import copy
+    import vente
+    from moteur.api import fiche_de
+    f = copy.deepcopy(fiche_de("mimosas"))
+    del f["copropriete"]["periode_construction"]
+    del f["comptes_approuves"]
+    m = vente.fiche_synthetique(f)["manquants"]
+    assert any("Période de construction" in x for x in m) and any("comptes" in x.lower() for x in m)
+
+
+def test_vente_pre_etat_date_calculs():
+    import vente
+    from moteur.api import fiche_de
+    from decimal import Decimal
+    p = vente.pre_etat_date(fiche_de("mimosas"), [2, 21])           # T3 + parking du même vendeur
+    assert p["vendeur"]["id"] == "CP02" and [l["numero"] for l in p["lots"]] == [2, 21]
+    # 660 / 10 000 du fonds de travaux (solde 6 800 €) : 448,80 €
+    assert p["fonds_travaux"]["part_lots"] == Decimal("448.80")
+    assert p["fonds_travaux"]["derniere_cotisation_annuelle"] == Decimal("79.20")
+    assert len(p["echeancier"]) == 4 and len(p["a_completer"]) == 2
+    assert p["plan"]["total"] > 0
+
+
+def test_vente_dossier_complet_et_zip():
+    import io
+    import zipfile
+    r = c.post("/copros/mimosas/ventes", headers=H, json={
+        "lots": [1], "au": "2026-11-18", "impayes_vendeur": "0",
+        "charges_payees": [{"exercice": 2024, "budget": "1050.20"}, {"exercice": 2025, "budget": "1098.40"}]})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["id"] == "20261118-lots-1" and d["a_completer"] == []
+    etats = {i["ref"]: i["etat"] for i in d["bordereau"]}
+    assert etats["1° a"] == "fourni" and etats["2° a"] == "fourni" and etats["1° b"] == "a_joindre"
+    z = c.get(d["telechargement"], headers=H)
+    assert z.status_code == 200
+    noms = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+    assert {"00_bordereau.pdf", "01_fiche_synthetique.pdf", "02_pre_etat_date.pdf", "03_plan_travaux.pdf"} <= set(noms)
+
+
+def test_vente_documents_deposes_et_acquereur_coproprietaire():
+    from moteur.api import DOSSIER_DATA
+    docs = DOSSIER_DATA / "mimosas" / "documents"
+    docs.mkdir(parents=True, exist_ok=True)
+    (docs / "reglement_copropriete.pdf").write_bytes(b"%PDF-1.4 fictif")
+    (docs / "pv_ag_2026-05-20.pdf").write_bytes(b"%PDF-1.4 fictif")
+    d = c.post("/copros/mimosas/ventes", headers=H, json={"lots": [17], "au": "2026-11-19"}).json()
+    etats = {i["ref"]: i["etat"] for i in d["bordereau"]}
+    assert etats["1° b"] == "depose" and etats["1° c"] == "depose" and etats["2° a"] == "a_completer"
+    assert "pv_ag_2026-05-20.pdf" in d["documents_joints"]
+    d2 = c.post("/copros/mimosas/ventes", headers=H, json={"lots": [18], "acquereur_coproprietaire": True}).json()
+    assert {i["ref"]: i["etat"] for i in d2["bordereau"]}["4°"] == "deja_detenu"
+
+
+def test_vente_garde_fous():
+    assert c.post("/copros/mimosas/ventes", headers=H, json={"lots": [99]}).status_code == 422
+    assert c.post("/copros/mimosas/ventes", headers=H, json={"lots": [1, 2]}).status_code == 422   # deux vendeurs
+    assert c.post("/copros/mimosas/ventes", headers=H, json={"lots": []}).status_code == 422
+    assert c.get("/copros/mimosas/ventes/..%2F..%2Fsecret.zip", headers=H).status_code in (404, 422)
+    assert c.get("/copros/mimosas/ventes/20990101-lots-1.zip", headers=H).status_code == 404
+    assert c.post("/copros/mimosas/ventes", json={"lots": [1]}).status_code == 401

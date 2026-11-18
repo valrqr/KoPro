@@ -76,3 +76,12 @@ Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante
 | GET / POST / PUT | `/copros/{copro}/envois` | Registre des envois : recommandés, dates de notification |
 | GET | `/copros/{copro}/ag/{ag}/convocations` | Chaque copropriétaire a-t-il été convoqué dans les délais ? |
 | GET | `/copros/{copro}/coproprietaires/{id}/mandat-sepa.pdf` | Mandat de prélèvement SEPA papier pré-rempli |
+
+## Dossier de vente
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/copros/{copro}/fiche-synthetique?au=` | Fiche synthétique en six rubriques, avec la liste des données manquantes |
+| GET | `/copros/{copro}/fiche-synthetique.pdf?au=` | La même, en PDF |
+| POST | `/copros/{copro}/ventes` | Dossier de vente d'un ou plusieurs lots d'un même vendeur : bordereau, PDF, archive |
+| GET | `/copros/{copro}/ventes/{id}.zip` | Archive du dossier, à transmettre au notaire |
