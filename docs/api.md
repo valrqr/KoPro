@@ -85,3 +85,16 @@ Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante
 | GET | `/copros/{copro}/fiche-synthetique.pdf?au=` | La même, en PDF |
 | POST | `/copros/{copro}/ventes` | Dossier de vente d'un ou plusieurs lots d'un même vendeur : bordereau, PDF, archive |
 | GET | `/copros/{copro}/ventes/{id}.zip` | Archive du dossier, à transmettre au notaire |
+
+## Impayés
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/copros/{copro}/banque/releves` | Import d'un relevé CSV (formulaire, champ `fichier`). Sans doublon, même si les relevés se chevauchent |
+| GET | `/copros/{copro}/impayes?au=&detail=` | Rapprochement, comptes des copropriétaires, relances proposées |
+| GET | `/copros/{copro}/impayes.pdf?au=` | État des impayés, document interne au syndic et au conseil syndical |
+| PUT | `/copros/{copro}/banque/operations/{op}` | `confirme` (avec le copropriétaire), `ignore` ou `annule` |
+| POST | `/copros/{copro}/impayes/ajustements` | Solde antérieur, appel de travaux, frais de recouvrement, avoir |
+| POST | `/copros/{copro}/relances/{cid}?au=` | Prépare la relance proposée (409 si ce n'est pas le moment) |
+| GET | `/copros/{copro}/relances/{id}.pdf` | La lettre |
+| PUT | `/copros/{copro}/relances/{id}` | Marque la relance envoyée (date, moyen, date de présentation du recommandé) ou annulée |

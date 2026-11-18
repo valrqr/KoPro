@@ -879,3 +879,132 @@ def test_vente_garde_fous():
     assert c.get("/copros/mimosas/ventes/..%2F..%2Fsecret.zip", headers=H).status_code in (404, 422)
     assert c.get("/copros/mimosas/ventes/20990101-lots-1.zip", headers=H).status_code == 404
     assert c.post("/copros/mimosas/ventes", json={"lots": [1]}).status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Impayés : relevé bancaire, rapprochement, relances
+# --------------------------------------------------------------------------- #
+RELEVE = Path(__file__).resolve().parents[1] / "exemples" / "banque" / "releve_mimosas_2027.csv"
+
+
+def _envoyer_releve(contenu: bytes, nom="releve.csv"):
+    return c.post("/copros/mimosas/banque/releves", headers=H, files={"fichier": (nom, contenu, "text/csv")})
+
+
+def test_banque_formats_de_releve():
+    import banque
+    from decimal import Decimal
+    assert banque._montant("1 234,56") == Decimal("1234.56")
+    assert banque._montant("-1.234,50 €") == Decimal("-1234.50")
+    assert banque._montant("(45,00)") == Decimal("-45.00")
+    assert banque._montant("") is None
+    signe = banque.lire_releve("Date opération,Date valeur,Libellé,Montant\n2027-01-03,2027-01-03,VIR X,\"225.00\"\n"
+                               "2027-01-04,2027-01-04,PRLV EDF,\"-1,234.50\"\n".encode())
+    assert [o["montant"] for o in signe["operations"]] == ["225.00", "-1234.50"]
+    assert signe["colonnes"]["date"] == "Date opération"          # pas la date de valeur
+    r = banque.lire_releve(RELEVE.read_bytes())                     # cp1252, préambule, Débit/Crédit
+    assert len(r["operations"]) == 30 and r["ignorees"] == []
+    import pytest
+    with pytest.raises(banque.ReleveInvalide):
+        banque.lire_releve(b"nom;age\nAlice;30\n")
+
+
+def test_impayes_import_sans_doublon():
+    for t in (1, 2):                                                # appels validés : ce qui est dû
+        assert c.post(f"/copros/mimosas/appels/2027/T{t}", params={"final": "true"}, headers=H).status_code == 200
+    r = _envoyer_releve(RELEVE.read_bytes()).json()
+    assert r["lues"] == 30 and r["nouvelles"] == 30
+    assert r["rapprochement"]["automatique"] == 22 and r["a_confirmer"] == 4
+    r2 = _envoyer_releve(RELEVE.read_bytes(), "le_meme.csv").json()
+    assert r2["nouvelles"] == 0 and r2["deja_connues"] == 30
+    assert _envoyer_releve(b"pas un releve").status_code == 422
+    assert c.post("/copros/mimosas/banque/releves", files={"fichier": ("r.csv", b"x")}).status_code == 401
+
+
+def test_impayes_rapprochement_et_blocage():
+    e = c.get("/copros/mimosas/impayes", params={"au": "2027-05-20", "detail": "true"}, headers=H).json()
+    ops = {o["libelle"]: o for o in e["operations"]}
+    assert ops["VIR SCI LES PINS MIMOSAS2027T1CP06"]["statut"] == "automatique"         # référence sans tirets
+    assert ops["REMISE PRLV SEPA MIMOSAS ECH 01/01/2027"]["parts"][0]["coproprietaire"] == "CP05"
+    rejet = ops["REJET PRLV SEPA MOREAU LEA MIMOSAS-CP05 PROVISION INSUFFISANTE"]
+    assert rejet["statut"] == "automatique" and rejet["montant"] == "-240.00"
+    assert ops["VIR M ROUX MANON CHARGES COPRO"]["statut"] == "propose"
+    rel = {p["coproprietaire"]: p for p in e["relances"]}
+    assert rel["CP14"]["etat"] == "a_preparer" and rel["CP14"]["prochaine"] == "rappel"   # jamais d'étape sautée
+    assert rel["CP11"]["etat"] == "bloque" and rel["CP08"]["etat"] == "bloque"
+    assert e["comptes"]["CP12"]["impaye"] == "47.50"                                    # partiel : imputation FIFO
+    assert e["comptes"]["CP05"]["impaye"] == "240.00"                                   # prélèvement rejeté
+    assert e["dont_a_confirmer"] == "1326.00" and e["nb_debiteurs_plus_300"] == 2
+
+
+def test_impayes_confirmation_par_le_syndic():
+    e = c.get("/copros/mimosas/impayes", params={"au": "2027-05-20"}, headers=H).json()
+    for o in e["a_confirmer"]:
+        cid = o["parts"][0]["coproprietaire"]
+        r = c.put(f"/copros/mimosas/banque/operations/{o['operation']}", headers=H,
+                  json={"statut": "confirme", "coproprietaire": cid})
+        assert r.status_code == 200
+    e = c.get("/copros/mimosas/impayes", params={"au": "2027-05-20"}, headers=H).json()
+    assert e["a_confirmer"] == [] and e["dont_a_confirmer"] == "0"
+    assert "CP11" not in {p["coproprietaire"] for p in e["relances"]}
+    assert e["total_impayes"] == "2189.50"                     # 1552,50 + 349,50 + 240 + 47,50
+    assert c.put("/copros/mimosas/banque/operations/OP0000000000", headers=H,
+                 json={"statut": "ignore"}).status_code == 422
+    assert c.put("/copros/mimosas/banque/operations/xx", headers=H, json={"statut": "ignore"}).status_code == 422
+
+
+def test_impayes_escalade_jusqu_a_la_mise_en_demeure():
+    def prep(au):
+        return c.post("/copros/mimosas/relances/CP14", params={"au": au}, headers=H)
+
+    def envoyer(rid, le, **kw):
+        return c.put(f"/copros/mimosas/relances/{rid}", headers=H, json={"statut": "envoyee", "envoyee_le": le, **kw})
+
+    r1 = prep("2027-05-20").json()
+    assert r1["type"] == "rappel" and r1["montant"] == "1552.50"
+    assert prep("2027-05-20").status_code == 409                       # déjà préparée, pas encore envoyée
+    assert c.get(r1["telechargement"], headers=H).content[:4] == b"%PDF"
+    assert envoyer(r1["id"], "2027-05-20").status_code == 200
+    assert "possible dans" in prep("2027-05-25").json()["detail"]       # 15 jours entre deux relances
+    r2 = prep("2027-06-04").json()
+    assert r2["type"] == "relance"
+    envoyer(r2["id"], "2027-06-04")
+    r3 = prep("2027-06-21").json()
+    assert r3["type"] == "mise_en_demeure" and "recommandé" in r3["envoi"]
+    assert envoyer(r3["id"], "2027-06-21", moyen="email").status_code == 422      # recommandé obligatoire
+    assert envoyer(r3["id"], "2027-06-21", moyen="lrar", presentee_le="2027-06-20").status_code == 422
+    assert envoyer(r3["id"], "2027-06-21", moyen="lrar", presentee_le="2027-06-23").status_code == 200
+    p = {x["coproprietaire"]: x for x in c.get("/copros/mimosas/impayes", params={"au": "2027-07-10"},
+                                                headers=H).json()["relances"]}["CP14"]
+    assert p["etat"] == "mise_en_demeure_en_cours" and p["date_limite"] == "2027-07-23"
+    p = {x["coproprietaire"]: x for x in c.get("/copros/mimosas/impayes", params={"au": "2027-07-24"},
+                                                headers=H).json()["relances"]}["CP14"]
+    assert p["etat"] == "delai_expire" and p["interets"]["montant"] == "3.63"
+    pdf = c.get("/copros/mimosas/impayes.pdf", params={"au": "2027-07-24"}, headers=H)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
+def test_impayes_mise_en_demeure_detaille_les_provisions():
+    from pypdf import PdfReader
+    import io
+    rel = [x for x in c.get("/copros/mimosas/impayes", params={"au": "2027-07-24", "detail": "true"},
+                            headers=H).json()["relances"]]
+    assert rel
+    pdf = c.get("/copros/mimosas/relances/R0003.pdf", headers=H).content
+    texte = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
+    for attendu in ("Budget – charges générales", "Fonds de travaux", "19-2", "art. 36", "10-1",
+                    "30 jours", "provisions à échoir", "1 552,50"):
+        assert attendu in texte, attendu
+
+
+def test_impayes_ajustements_et_echeancier():
+    r = c.post("/copros/mimosas/impayes/ajustements", headers=H, json={
+        "coproprietaire": "CP10", "le": "2027-05-01", "libelle": "Geste commercial (erreur de répartition)",
+        "montant": "-349.50", "nature": "avoir"})
+    assert r.status_code == 200 and r.json()["id"].startswith("A")
+    e = c.get("/copros/mimosas/impayes", params={"au": "2027-05-20"}, headers=H).json()
+    assert "CP10" not in {p["coproprietaire"] for p in e["relances"]}
+    assert c.post("/copros/mimosas/impayes/ajustements", headers=H, json={
+        "coproprietaire": "CP99", "le": "2027-05-01", "libelle": "Test", "montant": "10"}).status_code == 422
+    ech = c.get("/copros/mimosas/echeancier", params={"au": "2027-05-20"}, headers=H).json()
+    assert any(a["type"] == "impayes" for a in ech["alertes"])

@@ -177,6 +177,14 @@ comptes_approuves:
   nb_debiteurs_plus_300: 1              # copropriétaires débiteurs de plus de 300 €
   fonds_travaux: 5600.00                # montant du fonds de travaux à la clôture
 
+# Recouvrement des impayés (facultatif : valeurs par défaut ci-dessous)
+recouvrement:
+  seuil: 5                        # € : en dessous, pas de relance
+  rappel_jours: 15                # rappel amiable, jours après l'échéance
+  relance_jours: 30               # relance
+  mise_en_demeure_jours: 45       # mise en demeure (loi 1965, art. 19-2)
+  intervalle_min_jours: 15        # entre deux relances
+
 # Fonds de travaux (art. 14-2 loi 1965) : cotisation annuelle au moins égale à
 # 5 % du budget prévisionnel et, une fois un plan de travaux adopté en AG,
 # à 2,5 % du montant des travaux prévus dans ce plan.

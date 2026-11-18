@@ -422,6 +422,10 @@ def generer_appel(fiche: dict, copro: str, trimestre: int, racine: Path, final: 
     projet = not final
     montants = appel_par_lot(fiche)
     copros = {c["id"]: c for c in fiche["coproprietaires"]}
+    libelles = {r["id"]: r["libelle"] for r in rubriques(fiche)}
+    lots_de = {}
+    for l in fiche["lots"]:
+        lots_de.setdefault(l["proprietaire"], set()).add(l["numero"])
 
     totaux, envoi = {}, []
     for cid in sorted({l["proprietaire"] for l in fiche["lots"]}):
@@ -435,6 +439,12 @@ def generer_appel(fiche: dict, copro: str, trimestre: int, racine: Path, final: 
             aidant = None
         envoi.append({"coproprietaire": cid, "nom": copros[cid]["nom"], "envoi": k["canal"],
                       "email": copros[cid].get("email"), "montant": euros(total), "reference": ref,
+                      # montant brut et détail par rubrique : le recouvrement en a besoin (une mise en
+                      # demeure doit indiquer la nature et le montant de chaque provision réclamée)
+                      "montant_num": str(total),
+                      "detail": [{"rubrique": libelles[rid], "montant": str(sum(
+                          (m for (r2, n), m in montants.items() if r2 == rid and n in lots_de[cid]), Decimal("0")))}
+                          for rid in libelles if any(r2 == rid and n in lots_de[cid] for (r2, n) in montants)],
                       "fichier": chemin.name, "grands_caracteres": bool(copros[cid].get("grands_caracteres")),
                       "paiement": copros[cid].get("paiement", "virement"),
                       "adresse_postale": papier.adresse_postale(fiche, cid) if k["canal"] == "courrier" else None,

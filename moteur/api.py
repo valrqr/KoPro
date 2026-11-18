@@ -53,6 +53,14 @@ Routes :
     POST /copros/{copro}/envois                             inscrit un envoi au registre
     PUT  /copros/{copro}/envois/{id}                        date de première présentation, statut, n° de recommandé
     GET  /copros/{copro}/ag/{ag}/convocations               chaque copropriétaire a-t-il été convoqué à temps ?
+    POST /copros/{copro}/banque/releves                     import d'un relevé bancaire CSV (sans doublon)
+    GET  /copros/{copro}/impayes?au=                        rapprochement, comptes, relances proposées
+    GET  /copros/{copro}/impayes.pdf?au=                    état des impayés (document interne)
+    PUT  /copros/{copro}/banque/operations/{op}             confirmer, ignorer ou annuler un rapprochement
+    POST /copros/{copro}/impayes/ajustements                solde antérieur, appel de travaux, frais, avoir
+    POST /copros/{copro}/relances/{cid}                     préparer la relance proposée (PDF)
+    GET  /copros/{copro}/relances/{id}.pdf                  la lettre
+    PUT  /copros/{copro}/relances/{id}                      marquer envoyée (date, moyen, présentation) ou annulée
     GET  /copros/{copro}/fiche-synthetique?au=              fiche synthétique (décret 2016-1822), données manquantes
     GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
     POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
@@ -73,6 +81,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from typing import Literal
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Security, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import APIKeyHeader
@@ -86,6 +96,8 @@ import ag as assemblee  # noqa: E402
 import papier  # noqa: E402
 import plan_travaux  # noqa: E402
 import vente  # noqa: E402
+import banque  # noqa: E402
+import impayes  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -161,6 +173,7 @@ def rapport_echeancier(copro: str, fiche: dict, au: date, horizon: int) -> dict:
     sid = gouv["syndic"]["coproprietaire_id"]
     syndic = next((c for c in fiche["coproprietaires"] if c["id"] == sid), {})
     alertes = echeances(fiche, au, horizon, plan_travaux.charger_suivi(DOSSIER_DATA, copro))
+    alertes += alertes_impayes(copro, fiche, au)
     return {
         "copro": copro, "copropriete": fiche["copropriete"]["nom"],
         "au": au.isoformat(), "au_fr": f"{au:%d/%m/%Y}", "horizon_jours": horizon,
@@ -169,6 +182,27 @@ def rapport_echeancier(copro: str, fiche: dict, au: date, horizon: int) -> dict:
         "nb_urgentes": sum(1 for a in alertes if a["niveau"] == "urgent"),
         "alertes": alertes,
     }
+
+
+def alertes_impayes(copro: str, fiche: dict, au: date) -> list[dict]:
+    """Relances à préparer, paiements à confirmer et délais 19-2 expirés, pour l'échéancier."""
+    if not banque.charger_operations(DOSSIER_DATA, copro):
+        return []
+    from fiche_copro import _alerte
+    e = impayes.etat(fiche, DOSSIER_SORTIE, DOSSIER_DATA, copro, au)
+    res = []
+    n = sum(1 for p in e["relances"] if p["etat"] == "a_preparer")
+    if n:
+        res.append(_alerte("impayes", f"{n} relance(s) à préparer",
+                           "Impayés : relances proposées par Mitoyen, à relire avant envoi.", au, au, "urgent"))
+    if e["a_confirmer"]:
+        res.append(_alerte("impayes", f"{len(e['a_confirmer'])} paiement(s) à confirmer",
+                           "Opérations du relevé rattachées par le nom ou le montant : à vérifier.", au, au, "important"))
+    for p in e["relances"]:
+        if p["etat"] == "delai_expire":
+            res.append(_alerte("impayes", f"Mise en demeure sans effet : {p['nom']}", p["message"],
+                               date.fromisoformat(p["date_limite"]), au, "urgent"))
+    return res
 
 
 Horizon = Query(HORIZON_ALERTES_JOURS, ge=1, le=730, description="Nombre de jours à anticiper")
@@ -898,6 +932,111 @@ def _page(copro, dossier_id, sid, jeton, message=None) -> HTMLResponse:
 
 Jeton = PathParam(..., pattern=JETON)
 Sid = PathParam(..., pattern=ID_SONDAGE)
+
+
+# --------------------------------------------------------------------------- #
+# Impayés : relevés bancaires, rapprochement, relances
+# --------------------------------------------------------------------------- #
+ID_OPERATION = r"^OP[0-9a-f]{10}$"
+ID_RELANCE = r"^R\d{4}$"
+
+
+@app.post("/copros/{copro}/banque/releves", dependencies=[Depends(verifier_cle)])
+async def importer_releve(copro: str = Copro, fichier: UploadFile = File(..., description="Relevé CSV (5 Mo max)")) -> dict:
+    fiche_de(copro)
+    contenu = await fichier.read(banque.TAILLE_MAX + 1)
+    try:
+        r = banque.importer(DOSSIER_DATA, copro, contenu, fichier.filename or "releve.csv")
+    except banque.ReleveInvalide as e:
+        raise HTTPException(422, str(e))
+    e = impayes.etat(fiche_de(copro), DOSSIER_SORTIE, DOSSIER_DATA, copro)
+    return _json({**r, "rapprochement": e["rapprochement"], "a_confirmer": len(e["a_confirmer"])})
+
+
+@app.get("/copros/{copro}/impayes", dependencies=[Depends(verifier_cle)])
+def etat_impayes(copro: str = Copro, au: date | None = Query(None),
+                 detail: bool = Query(False, description="true = inclure toutes les opérations et échéances")) -> dict:
+    e = impayes.etat(fiche_de(copro), DOSSIER_SORTIE, DOSSIER_DATA, copro, au)
+    if not detail:
+        e.pop("operations")
+        e["comptes"] = {cid: {k: v for k, v in c.items() if k not in ("echeances", "paiements")}
+                        for cid, c in e["comptes"].items() if c["impaye"] or c["solde"]}
+    return _json(e)
+
+
+@app.get("/copros/{copro}/impayes.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_impayes(copro: str = Copro, au: date | None = Query(None)) -> FileResponse:
+    fiche = fiche_de(copro)
+    e = impayes.etat(fiche, DOSSIER_SORTIE, DOSSIER_DATA, copro, au)
+    chemin = impayes.generer_etat(fiche, e, DOSSIER_SORTIE / copro / "recouvrement" / f"etat_impayes_{e['au']}.pdf")
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class Affectation(BaseModel):
+    statut: Literal["confirme", "ignore", "annule"]
+    coproprietaire: str | None = Field(None, pattern=ID_COPRO)
+
+
+@app.put("/copros/{copro}/banque/operations/{op_id}", dependencies=[Depends(verifier_cle)])
+def affecter_operation(corps: Affectation, copro: str = Copro, op_id: str = PathParam(..., pattern=ID_OPERATION)) -> dict:
+    try:
+        return impayes.affecter(fiche_de(copro), DOSSIER_DATA, copro, op_id, corps.statut, corps.coproprietaire)
+    except impayes.RecouvrementInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+class Ajustement(BaseModel):
+    coproprietaire: str = Field(..., pattern=ID_COPRO)
+    le: date = Field(..., description="Date d'exigibilité (ou de l'avoir)")
+    libelle: str = Field(..., min_length=3, max_length=120)
+    montant: Decimal = Field(..., max_digits=12, decimal_places=2)
+    nature: Literal["solde_anterieur", "travaux", "frais_recouvrement", "avoir", "autre"] = "autre"
+
+
+@app.post("/copros/{copro}/impayes/ajustements", dependencies=[Depends(verifier_cle)])
+def ajouter_ajustement(corps: Ajustement, copro: str = Copro) -> dict:
+    try:
+        return impayes.ajouter_ajustement(fiche_de(copro), DOSSIER_DATA, copro, corps.coproprietaire, corps.le,
+                                          corps.libelle, corps.montant, corps.nature)
+    except impayes.RecouvrementInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/copros/{copro}/relances/{cid}", dependencies=[Depends(verifier_cle)])
+def preparer_relance(copro: str = Copro, cid: str = PathParam(..., pattern=ID_COPRO), au: date | None = Query(None)) -> dict:
+    """Prépare la relance que Mitoyen propose pour ce copropriétaire (jamais une étape sautée)."""
+    try:
+        r = impayes.preparer_relance(fiche_de(copro), DOSSIER_SORTIE, DOSSIER_DATA, copro, cid,
+                                     DOSSIER_SORTIE / copro / "recouvrement", au)
+    except impayes.RecouvrementInvalide as e:
+        raise HTTPException(409, str(e))
+    r.pop("chemin")
+    return _json({**r, "telechargement": f"/copros/{copro}/relances/{r['id']}.pdf"})
+
+
+@app.get("/copros/{copro}/relances/{rid}.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_relance(copro: str = Copro, rid: str = PathParam(..., pattern=ID_RELANCE)) -> FileResponse:
+    rel = next((x for x in impayes.charger_relances(DOSSIER_DATA, copro) if x["id"] == rid), None)
+    chemin = DOSSIER_SORTIE / copro / "recouvrement" / rel["fichier"] if rel else None
+    if not chemin or not chemin.is_file():
+        raise HTTPException(404, "Relance introuvable")
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class SuiviRelance(BaseModel):
+    statut: Literal["envoyee", "annulee"]
+    envoyee_le: date | None = None
+    moyen: Literal["email", "courrier", "remise_main", "lrar", "lre", "commissaire_justice"] | None = None
+    presentee_le: date | None = Field(None, description="Première présentation du recommandé (avis de réception)")
+
+
+@app.put("/copros/{copro}/relances/{rid}", dependencies=[Depends(verifier_cle)])
+def suivre_relance(corps: SuiviRelance, copro: str = Copro, rid: str = PathParam(..., pattern=ID_RELANCE)) -> dict:
+    try:
+        return impayes.marquer(fiche_de(copro), DOSSIER_DATA, copro, rid, corps.statut, corps.envoyee_le, corps.moyen,
+                               corps.presentee_le)
+    except impayes.RecouvrementInvalide as e:
+        raise HTTPException(422, str(e))
 
 
 # --------------------------------------------------------------------------- #
