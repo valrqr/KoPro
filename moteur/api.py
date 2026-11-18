@@ -28,6 +28,11 @@ Routes :
     POST /copros/{copro}/travaux/{id}/sondages/{s}/cloture  clôture anticipée
     POST /copros/{copro}/travaux/{id}/ag                    dépouillement d'AG (une résolution par devis)
     POST /copros/{copro}/travaux/{id}/conseil               vote du conseil syndical (délégation)
+    GET  /copros/{copro}/plan                               plan de travaux, suivi, cotisation minimale, conformité
+    GET  /copros/{copro}/plan/projection?cotisation=&indexation=   fonds de travaux sur 10 ans + quotes-parts
+    GET  /copros/{copro}/plan.pdf?cotisation=&indexation=   projection à diffuser ou joindre à la convocation
+    PUT  /copros/{copro}/plan/lignes/{ligne}                avancement d'une ligne (reportée, réalisée…)
+    POST /copros/{copro}/plan/lignes/{ligne}/dossier        ouvre le dossier de travaux d'une ligne du plan
     GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
@@ -53,6 +58,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "core"))
 from avis_appel import FicheInvalide, dossier_appel, generer_appel  # noqa: E402
 from fiche_copro import HORIZON_ALERTES_JOURS, alertes_echeancier, charger_fiche, echeances, valider  # noqa: E402
+import plan_travaux  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -126,7 +132,7 @@ def rapport_echeancier(copro: str, fiche: dict, au: date, horizon: int) -> dict:
     gouv = fiche["gouvernance"]
     sid = gouv["syndic"]["coproprietaire_id"]
     syndic = next((c for c in fiche["coproprietaires"] if c["id"] == sid), {})
-    alertes = echeances(fiche, au, horizon)
+    alertes = echeances(fiche, au, horizon, plan_travaux.charger_suivi(DOSSIER_DATA, copro))
     return {
         "copro": copro, "copropriete": fiche["copropriete"]["nom"],
         "au": au.isoformat(), "au_fr": f"{au:%d/%m/%Y}", "horizon_jours": horizon,
@@ -341,6 +347,91 @@ def verifier_entreprises(corps: DemandeVerification | None = None, copro: str = 
         return travaux.verifier_entreprises(DOSSIER_DATA, copro, d, (corps.siren if corps else None))
     except travaux.DossierInvalide as e:
         raise HTTPException(422, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Plan pluriannuel de travaux
+# --------------------------------------------------------------------------- #
+ID_LIGNE = r"^L\d{1,3}$"
+Ligne = PathParam(..., pattern=ID_LIGNE)
+Cotisation = Query(None, ge=0, le=1_000_000, description="Cotisation annuelle à simuler (défaut : celle de la fiche)")
+Indexation = Query(0, ge=0, le=20, description="Hausse annuelle des prix, en % (ex. 3)")
+
+
+def plan_de(copro: str) -> tuple[dict, dict]:
+    fiche = fiche_de(copro)
+    if not plan_travaux.plan_de(fiche):
+        raise HTTPException(404, f"La fiche « {copro} » ne contient pas de plan de travaux")
+    erreurs = plan_travaux.valider_plan(fiche)
+    if erreurs:
+        raise HTTPException(422, {"message": "Plan de travaux invalide", "erreurs": erreurs})
+    return fiche, plan_travaux.charger_suivi(DOSSIER_DATA, copro)
+
+
+@app.get("/copros/{copro}/plan", dependencies=[Depends(verifier_cle)])
+def voir_plan(copro: str = Copro, au: date | None = Query(None)) -> dict:
+    fiche, suivi = plan_de(copro)
+    p = plan_travaux.plan_de(fiche)
+    return _json({
+        "copro": copro, "statut": p["statut"], "elabore_le": p["elabore_le"].isoformat(),
+        "elabore_par": p.get("elabore_par"),
+        "adopte_le": p["adopte_le"].isoformat() if p.get("adopte_le") else None,
+        "lignes": plan_travaux.lignes(fiche, suivi),
+        "cotisation_minimale": plan_travaux.cotisation_minimale(fiche),
+        "conformite": plan_travaux.conformite(fiche, au or date.today(), suivi),
+    })
+
+
+@app.get("/copros/{copro}/plan/projection", dependencies=[Depends(verifier_cle)])
+def projeter_plan(copro: str = Copro, cotisation: Decimal | None = Cotisation,
+                  indexation: Decimal = Indexation) -> dict:
+    fiche, suivi = plan_de(copro)
+    proj = plan_travaux.projection(fiche, suivi, cotisation, indexation)
+    lissage = plan_travaux.cotisation_lissee(fiche, suivi, indexation)
+    cmin = plan_travaux.cotisation_minimale(fiche)
+    qp = plan_travaux.quotes_parts(fiche, proj)
+    for q in qp:   # clés JSON en texte
+        q["annees"] = {str(an): v for an, v in q["annees"].items()}
+    return _json({"en_bref": plan_travaux.en_bref(fiche, proj, lissage, cmin), "projection": proj,
+                  "cotisation_lissee": lissage, "cotisation_minimale": cmin, "quotes_parts": qp})
+
+
+@app.get("/copros/{copro}/plan.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_plan(copro: str = Copro, cotisation: Decimal | None = Cotisation, indexation: Decimal = Indexation,
+             au: date | None = Query(None)) -> FileResponse:
+    fiche, suivi = plan_de(copro)
+    sortie = DOSSIER_SORTIE / copro / "plan"
+    sortie.mkdir(parents=True, exist_ok=True)
+    jour = au or date.today()
+    chemin = plan_travaux.generer_pdf(fiche, sortie / f"plan_travaux_{jour:%Y%m%d}.pdf", suivi, cotisation,
+                                      indexation, jour)
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+class SuiviLigne(BaseModel):
+    statut: str = Field(..., description="prevu | engage | realise | reporte | abandonne")
+    annee: int | None = Field(None, ge=2000, le=2100, description="Nouvelle année (obligatoire pour un report)")
+    montant_reel: Decimal | None = Field(None, gt=0, description="Montant payé (obligatoire si réalisé)")
+    note: str = Field("", max_length=500)
+
+
+@app.put("/copros/{copro}/plan/lignes/{ligne}", dependencies=[Depends(verifier_cle)])
+def suivre_ligne(corps: SuiviLigne, copro: str = Copro, ligne: str = Ligne) -> dict:
+    fiche, _ = plan_de(copro)
+    try:
+        return _json(plan_travaux.mettre_a_jour_ligne(DOSSIER_DATA, copro, fiche, ligne, corps.statut, corps.annee,
+                                                      corps.montant_reel, corps.note))
+    except plan_travaux.PlanInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/copros/{copro}/plan/lignes/{ligne}/dossier", status_code=201, dependencies=[Depends(verifier_cle)])
+def ouvrir_dossier_plan(copro: str = Copro, ligne: str = Ligne) -> dict:
+    fiche, _ = plan_de(copro)
+    try:
+        return plan_travaux.ouvrir_dossier(DOSSIER_DATA, copro, fiche, ligne)
+    except (plan_travaux.PlanInvalide, travaux.DossierInvalide) as e:
+        raise HTTPException(409 if "déjà" in str(e) else 422, str(e))
 
 
 # --------------------------------------------------------------------------- #

@@ -139,10 +139,13 @@ budget_previsionnel:
     - { libelle: "Maintenance ascenseur",            cle: ascenseur, montant: 2400 }
     - { libelle: "Électricité ascenseur",            cle: ascenseur, montant: 600 }
 
-# Fonds de travaux : cotisation annuelle, au moins 5 % du budget prévisionnel
+# Fonds de travaux (art. 14-2 loi 1965) : cotisation annuelle au moins égale à
+# 5 % du budget prévisionnel et, une fois un plan de travaux adopté en AG,
+# à 2,5 % du montant des travaux prévus dans ce plan.
 fonds_travaux:
   cle: generales
   cotisation_annuelle: 1200
+  solde: { montant: 6800, au: 2026-12-31 }   # solde du compte du fonds à cette date
 
 # Seuils votés en AG (montants TTC, en euros). Ils servent à aiguiller chaque
 # dossier de travaux vers le bon circuit de décision.
@@ -170,12 +173,39 @@ appels_de_fonds:
 # 10. Diagnostics et obligations suivis par l'échéancier
 # -----------------------------------------------------------------------------
 diagnostics:
-  - { id: pppt,  libelle: "Projet de plan pluriannuel de travaux", realise_le: null,       validite_ans: 10 }
+  - { id: pppt,  libelle: "Projet de plan pluriannuel de travaux", realise_le: 2026-10-01, validite_ans: 10 }
+  - { id: dpe_collectif, libelle: "DPE collectif",                  realise_le: null,       validite_ans: 10 }
   - { id: dtg,   libelle: "Diagnostic technique global",            realise_le: null,       validite_ans: 10 }
   - { id: amiante, libelle: "Dossier technique amiante",            realise_le: 2019-05-14, validite_ans: null }
 
 # -----------------------------------------------------------------------------
-# 11. Modules de l'agent activés pour cette copro
+# 11. Plan pluriannuel de travaux (art. 14-2 loi 1965)
+#     Reprend le projet établi par le professionnel (PPPT) : liste des travaux,
+#     estimation sommaire du coût, priorité, année proposée sur 10 ans.
+#     statut : projet (pas encore voté) | adopte (voté en AG, date dans adopte_le)
+#     Montants TTC estimés aux prix de l'année d'élaboration.
+#     categorie : securite | conservation | energie | confort
+#     priorite  : 1 (indispensable) à 3 (souhaitable)
+#     Le suivi (dossier ouvert, travaux réalisés) est tenu par KoPro dans data/,
+#     cette section reste le plan tel qu'il a été présenté à l'AG.
+# -----------------------------------------------------------------------------
+plan_travaux:
+  statut: projet
+  elabore_le: 2026-10-01
+  elabore_par: "Bureau d'études Exemple"        # fictif
+  adopte_le: null
+  annee_debut: 2027
+  lignes:
+    - { id: L01, intitule: "Remplacement de la porte de hall et du contrôle d'accès", categorie: securite,     priorite: 1, annee: 2027, montant: 3500,  cle: generales }
+    - { id: L02, intitule: "Mise aux normes de l'ascenseur (portes palières)",        categorie: securite,     priorite: 1, annee: 2028, montant: 9000,  cle: ascenseur }
+    - { id: L03, intitule: "Réfection de l'étanchéité de la toiture-terrasse",        categorie: conservation, priorite: 1, annee: 2029, montant: 28000, cle: generales }
+    - { id: L04, intitule: "Ravalement des façades",                                  categorie: conservation, priorite: 2, annee: 2031, montant: 42000, cle: generales }
+    - { id: L05, intitule: "Isolation du plancher bas (plafond du sous-sol)",         categorie: energie,      priorite: 2, annee: 2031, montant: 8000,  cle: generales }
+    - { id: L06, intitule: "Remplacement des colonnes d'eau",                         categorie: conservation, priorite: 2, annee: 2033, montant: 18000, cle: generales }
+    - { id: L07, intitule: "Éclairage LED et détecteurs des parties communes",        categorie: energie,      priorite: 3, annee: 2035, montant: 2500,  cle: generales }
+
+# -----------------------------------------------------------------------------
+# 12. Modules de l'agent activés pour cette copro
 # -----------------------------------------------------------------------------
 modules_actifs:
   - memoire_documentaire
@@ -185,3 +215,4 @@ modules_actifs:
   - echeancier_legal
   - tri_mails
   - devis_travaux
+  - plan_travaux

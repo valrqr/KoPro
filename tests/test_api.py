@@ -29,7 +29,7 @@ def test_cle_obligatoire():
 
 def test_fiche_valide_et_alertes():
     r = c.get("/copros/mimosas/fiche", params={"au": "2027-02-15"}, headers=H).json()
-    assert r["valide"] and len(r["alertes"]) == 4
+    assert r["valide"] and len(r["alertes"]) == 6        # dont 2 lignes du plan de travaux (2027, 2028)
 
 
 def test_generation_complete():
@@ -56,9 +56,9 @@ def test_garde_fous():
 def test_echeancier_copro():
     r = c.get("/copros/mimosas/echeancier", params={"au": "2027-02-15"}, headers=H).json()
     assert r["syndic"]["email"] == "camille.durand@exemple.fr"
-    assert r["nb_alertes"] == 4
+    assert r["nb_alertes"] == 6
     types = [a["type"] for a in r["alertes"]]
-    assert types.count("contrat") == 2 and types.count("diagnostic") == 2
+    assert types.count("contrat") == 2 and types.count("diagnostic") == 2 and types.count("plan") == 2
     jardin = next(a for a in r["alertes"] if a["titre"] == "Entretien du jardin")
     assert "sans reconduction" in jardin["message"] and jardin["date"] == "2027-03-31"
     ascenseur = next(a for a in r["alertes"] if a["titre"] == "Maintenance ascenseur")
@@ -450,3 +450,130 @@ if __name__ == "__main__":
     for nom, f in list(globals().items()):
         if nom.startswith("test_"):
             f(); print("✓", nom)
+
+
+# --------------------------------------------------------------------------- #
+# Plan pluriannuel de travaux
+# --------------------------------------------------------------------------- #
+from decimal import Decimal  # noqa: E402
+import copy  # noqa: E402
+import plan_travaux  # noqa: E402
+from fiche_copro import charger_fiche, valider  # noqa: E402
+
+FICHE = charger_fiche(Path(__file__).resolve().parent.parent / "config" / "mimosas.yaml")
+
+
+def test_plan_cotisation_minimale():
+    cm = plan_travaux.cotisation_minimale(FICHE)
+    assert cm["montant_plan"] == Decimal("111000.00")
+    assert cm["minimum_budget"] == Decimal("990.00")          # 5 % de 19 800
+    assert cm["minimum_plan"] == Decimal("2775.00")           # 2,5 % de 111 000
+    assert not cm["plan_adopte"] and cm["minimum_applicable"] == Decimal("990.00")
+    assert cm["conforme"] and not cm["conforme_si_adopte"]
+    # Une fois le plan adopté, 1 200 € ne suffisent plus : la fiche devient invalide
+    f = copy.deepcopy(FICHE)
+    f["plan_travaux"]["statut"] = "adopte"
+    f["plan_travaux"]["adopte_le"] = FICHE["plan_travaux"]["elabore_le"]
+    assert any("2,5 %" in e for e in valider(f).erreurs)
+    f["fonds_travaux"]["cotisation_annuelle"] = 2775
+    assert valider(f).ok
+
+
+def test_plan_projection_tombe_juste():
+    p = plan_travaux.projection(FICHE)
+    a = {x["annee"]: x for x in p["annees"]}
+    assert a[2027]["pris_sur_fonds"] == Decimal("3500.00") and a[2027]["solde_fin"] == Decimal("4500.00")
+    assert a[2028]["pris_sur_fonds"] == Decimal("5700.00") and a[2028]["appel_complementaire"] == Decimal("3300.00")
+    t = p["totaux"]
+    assert t["travaux"] == Decimal("111000.00") and t["appels_complementaires"] == Decimal("93400.00")
+    # Ce qui entre = ce qui sort : solde initial + cotisations + appels = travaux + solde final
+    assert p["solde_initial"] + t["cotisations"] + t["appels_complementaires"] == t["travaux"] + t["solde_final"]
+    # Les quotes-parts retombent exactement sur les totaux, chaque année
+    qp = plan_travaux.quotes_parts(FICHE, p)
+    for an, x in a.items():
+        assert sum(q["annees"][an]["total"] for q in qp) == x["cotisation"] + x["appel_complementaire"]
+    # Ascenseur (clé spéciale) : les caves et parkings ne paient rien de l'appel de 2028
+    assert all(q["annees"][2028]["appels"] > 0 for q in qp)                   # tous ont un appartement
+    l02 = next(t for t in a[2028]["travaux"] if t["id"] == "L02")
+    assert l02["cle"] == "ascenseur"
+
+
+def test_plan_cotisation_lissee_supprime_les_appels():
+    lis = plan_travaux.cotisation_lissee(FICHE)
+    assert lis["cotisation_sans_appel"] == Decimal("16740.00") and lis["annee_determinante"] == 2031
+    p = plan_travaux.projection(FICHE, cotisation=lis["cotisation_lissee"])
+    assert p["totaux"]["appels_complementaires"] == 0
+    p = plan_travaux.projection(FICHE, cotisation=lis["cotisation_lissee"] - 10)
+    assert p["totaux"]["appels_complementaires"] > 0                          # 10 € de moins ne suffisent plus
+
+
+def test_plan_indexation():
+    p0 = plan_travaux.projection(FICHE)
+    p3 = plan_travaux.projection(FICHE, indexation=3)
+    assert p3["totaux"]["travaux"] > p0["totaux"]["travaux"]
+    l01 = next(t for t in p3["annees"][0]["travaux"] if t["id"] == "L01")
+    assert l01["montant"] == Decimal("3605.00")                                # 3 500 × 1,03 (plan de 2026)
+
+
+def test_plan_api_projection_et_pdf():
+    r = c.get("/copros/mimosas/plan", params={"au": "2026-11-18"}, headers=H)
+    assert r.status_code == 200
+    d = r.json()
+    assert len(d["lignes"]) == 7 and d["statut"] == "projet"
+    etats = {x["sujet"]: x["etat"] for x in d["conformite"]}
+    assert etats["DPE collectif"] == "manquant" and etats["Cotisation au fonds de travaux"] == "attention"
+    r = c.get("/copros/mimosas/plan/projection", params={"cotisation": 3000, "indexation": 2}, headers=H).json()
+    assert r["projection"]["cotisation"] == "3000.00" and "en_bref" in r and len(r["quotes_parts"]) == 14
+    pdf = c.get("/copros/mimosas/plan.pdf", params={"au": "2026-11-18"}, headers=H)
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert c.get("/copros/mimosas/plan/projection", params={"indexation": 50}, headers=H).status_code == 422
+
+
+def test_plan_ligne_ouvre_un_dossier_et_suivi():
+    r = c.post("/copros/mimosas/plan/lignes/L02/dossier", headers=H)
+    assert r.status_code == 201
+    d = r.json()
+    assert d["plan_ligne"] == "L02" and d["cle"] == "ascenseur" and d["estimation_plan"] == "9000.00"
+    assert c.post("/copros/mimosas/plan/lignes/L02/dossier", headers=H).status_code == 409   # pas deux fois
+    l02 = next(l for l in c.get("/copros/mimosas/plan", headers=H).json()["lignes"] if l["id"] == "L02")
+    assert l02["statut"] == "engage" and l02["dossier"] == d["id"]
+    # L'échéancier ne la signale plus : son dossier est ouvert
+    alertes = c.get("/copros/mimosas/echeancier", params={"au": "2027-02-15"}, headers=H).json()["alertes"]
+    assert not any("L02" in a["titre"] for a in alertes) and any("L01" in a["titre"] for a in alertes)
+    # Réalisée : sort de la projection
+    r = c.put("/copros/mimosas/plan/lignes/L02", json={"statut": "realise"}, headers=H)
+    assert r.status_code == 422                                              # montant réel obligatoire
+    r = c.put("/copros/mimosas/plan/lignes/L02", json={"statut": "realise", "montant_reel": 8650}, headers=H)
+    assert r.status_code == 200 and r.json()["montant_reel"] == "8650.00"
+    proj = c.get("/copros/mimosas/plan/projection", headers=H).json()["projection"]
+    assert proj["totaux"]["travaux"] == "102000.00"
+    # Report : nouvelle année obligatoire et postérieure
+    assert c.put("/copros/mimosas/plan/lignes/L07", json={"statut": "reporte"}, headers=H).status_code == 422
+    r = c.put("/copros/mimosas/plan/lignes/L07", json={"statut": "reporte", "annee": 2036}, headers=H)
+    assert r.json()["annee"] == 2036 and r.json()["annee_prevue"] == 2035
+    assert c.post("/copros/mimosas/plan/lignes/L99/dossier", headers=H).status_code == 422
+    assert c.post("/copros/mimosas/plan/lignes/..%2F/dossier", headers=H).status_code in (404, 422)
+
+
+def test_plan_invalide_et_ligne_en_retard():
+    f = copy.deepcopy(FICHE)
+    f["plan_travaux"]["lignes"][0]["cle"] = "inconnue"
+    f["plan_travaux"]["lignes"][1]["annee"] = 2040
+    err = plan_travaux.valider_plan(f)
+    assert any("clé inconnue" in e for e in err) and any("hors de la période" in e for e in err)
+    conf = plan_travaux.conformite(FICHE, __import__("datetime").date(2029, 3, 1), {})
+    retard = [x for x in conf if x["sujet"].startswith("Travaux")]
+    assert {x["sujet"] for x in retard} == {"Travaux L01", "Travaux L02"}
+
+
+def test_plan_comparatif_signale_le_depassement_de_l_estimation():
+    d = c.post("/copros/mimosas/plan/lignes/L01/dossier", headers=H).json()      # porte de hall : 3 500 € au plan
+    devis = Path(__file__).resolve().parent.parent / "exemples" / "devis" / "devis_menuiserie_du_port.pdf"
+    with open(devis, "rb") as f:
+        r = c.post(f"/copros/mimosas/travaux/{d['id']}/devis", headers=H,
+                   data={"entreprise": "Menuiserie du Port", "montant_ht": "4150", "taux_tva": "10"},
+                   files={"fichier": ("devis.pdf", f, "application/pdf")})
+    assert r.status_code == 201, r.text
+    comp = c.get(f"/copros/mimosas/travaux/{d['id']}", headers=H).json()["comparatif"]
+    assert comp["plan"]["ligne"] == "L01" and comp["plan"]["ecart_pct"] == "30.4"   # 4 565 € TTC vs 3 500 €
+    assert any("estimation du plan" in a for a in comp["alertes"])

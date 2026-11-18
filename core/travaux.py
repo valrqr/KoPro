@@ -31,6 +31,7 @@ NATURES = {
 }
 TAUX_TVA = {Decimal("5.5"), Decimal("10"), Decimal("20")}
 ECART_IMPORTANT = Decimal("0.5")      # 50 % d'écart entre devis : prestations sans doute différentes
+ECART_PLAN_PCT = Decimal("20")        # devis > estimation du plan + 20 % : financement à prévoir
 TAILLE_MAX_PDF = 10 * 1024 * 1024     # 10 Mo par devis
 AVERTISSEMENT = ("Aiguillage indicatif, établi à partir des seuils de la fiche. "
                  "Il ne remplace pas l'avis d'un juriste ou de l'ADIL.")
@@ -189,7 +190,18 @@ def comparatif(fiche: dict, dossier: dict, aujourd_hui: date | None = None) -> d
     if len(valides) >= 2 and (valides[-1]["montant_ttc"] - reference) / reference > ECART_IMPORTANT:
         alertes.append("Écart de plus de 50 % entre les devis : vérifier qu'ils portent sur les mêmes prestations")
 
-    return {"dossier": dossier["id"], "cle": cle, "cle_libelle": fiche["cles_repartition"][cle]["libelle"],
+    # Dossier ouvert depuis le plan de travaux : comparer à l'estimation du plan
+    plan = None
+    if dossier.get("estimation_plan") and reference is not None:
+        estimation = Decimal(dossier["estimation_plan"])
+        ecart = ((reference - estimation) / estimation * 100).quantize(Decimal("0.1"))
+        plan = {"ligne": dossier.get("plan_ligne"), "estimation": estimation, "ecart_pct": ecart}
+        if ecart > ECART_PLAN_PCT:
+            alertes.append(f"Le devis le moins cher dépasse de {str(ecart).replace('.', ',')} % l'estimation du plan "
+                           f"de travaux ({estimation} €, ligne {dossier.get('plan_ligne')}) : prévoir le "
+                           f"financement complémentaire")
+
+    return {"plan": plan, "dossier": dossier["id"], "cle": cle, "cle_libelle": fiche["cles_repartition"][cle]["libelle"],
             "base_tantiemes": fiche["cles_repartition"][cle]["base"], "nb_devis": len(lignes),
             "reference_ttc": reference, "devis": lignes, "quotes_parts": quotes_parts, "alertes": alertes}
 

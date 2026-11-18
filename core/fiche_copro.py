@@ -116,6 +116,19 @@ def valider(fiche: dict) -> Rapport:
     if cotisation < minimum:
         r.erreurs.append(f"Fonds de travaux : {cotisation} € < minimum légal {minimum} € (5 % de {budget} €)")
 
+    # 5 bis. Plan pluriannuel de travaux : cohérence, et 2,5 % des travaux une fois adopté
+    import plan_travaux
+    erreurs_plan = plan_travaux.valider_plan(fiche)
+    r.erreurs += erreurs_plan
+    if not erreurs_plan and plan_travaux.plan_de(fiche):
+        cmin = plan_travaux.cotisation_minimale(fiche)
+        if cmin["plan_adopte"] and cotisation < cmin["minimum_plan"]:
+            r.erreurs.append(f"Fonds de travaux : {cotisation} € < minimum légal {cmin['minimum_plan']} € "
+                             f"(2,5 % des {cmin['montant_plan']} € de travaux du plan adopté)")
+        elif not cmin["plan_adopte"] and not cmin["conforme_si_adopte"]:
+            r.alertes.append(f"Si le plan de travaux est adopté, la cotisation au fonds de travaux devra "
+                             f"passer à au moins {cmin['minimum_si_adopte']} € par an")
+
     # 6. Seuils de décision (facultatifs, mais cohérents s'ils sont présents)
     seuils = fiche.get("seuils") or {}
     for nom in ("consultation_conseil_syndical", "mise_en_concurrence"):
@@ -165,9 +178,11 @@ def _alerte(type_: str, titre: str, message: str, echeance: date | None, aujourd
             "jours": jours, "niveau": niveau or _niveau(jours)}
 
 
-def echeances(fiche: dict, aujourd_hui: date, horizon: int = HORIZON_ALERTES_JOURS) -> list[dict]:
+def echeances(fiche: dict, aujourd_hui: date, horizon: int = HORIZON_ALERTES_JOURS,
+              suivi_plan: dict | None = None) -> list[dict]:
     """Toutes les échéances à signaler au syndic, de la plus proche à la plus lointaine.
-    niveau : urgent (≤ 30 j) | a_prevoir | depasse | info"""
+    niveau : urgent (≤ 30 j) | a_prevoir | depasse | info
+    suivi_plan : suivi du plan de travaux (data/), pour ne pas signaler une ligne déjà engagée."""
     res: list[dict] = []
 
     # 1. Contrats : date limite pour résilier avant la reconduction
@@ -225,7 +240,12 @@ def echeances(fiche: dict, aujourd_hui: date, horizon: int = HORIZON_ALERTES_JOU
                            f"Se termine le {fin_mandat:%d/%m/%Y} : prévoir le renouvellement à l'ordre du jour de l'AG",
                            fin_mandat, aujourd_hui))
 
-    ordre = {"urgent": 0, "a_prevoir": 1, "info": 2, "depasse": 3}
+    # 5. Plan de travaux : lignes de cette année ou de l'an prochain sans dossier ouvert
+    import plan_travaux
+    if not plan_travaux.valider_plan(fiche):
+        res += plan_travaux.alertes_plan(fiche, aujourd_hui, suivi_plan)
+
+    ordre ={"urgent": 0, "a_prevoir": 1, "info": 2, "depasse": 3}
     res.sort(key=lambda a: (ordre[a["niveau"]], a["date"] or "9999"))
     return res
 
