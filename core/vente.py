@@ -347,21 +347,23 @@ def _doc(chemin: Path, titre: str):
     from reportlab.lib.units import mm
     from reportlab.platypus import SimpleDocTemplate
     return SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                             topMargin=16 * mm, bottomMargin=20 * mm, title=titre)
+                             topMargin=20 * mm, bottomMargin=18 * mm, title=titre)
 
 
 def generer_fiche_synthetique(fiche: dict, chemin: Path, aujourd_hui: date | None = None) -> Path:
     from reportlab.lib.units import mm
     from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
-    from avis_appel import FILET, GRIS, S, tampon
+    from avis_appel import FILET, GRIS, S, tampon, CanevasNumerote
     fs = fiche_synthetique(fiche, aujourd_hui)
     c = fiche["copropriete"]
     h = [Paragraph("Fiche synthétique de la copropriété", S["titre"]),
-         Paragraph(f"{c['nom']} · établie le {date.fromisoformat(fs['etablie_le']):%d/%m/%Y} · loi du 10 juillet 1965, "
-                   f"art. 8-2 ; décret n° 2016-1822", S["sous"]), Spacer(1, 4 * mm)]
+         Paragraph(f"{c['nom']} · établie le {date.fromisoformat(fs['etablie_le']):%d/%m/%Y} · décret n° 2016-1822",
+                   S["sous"]), Spacer(1, 4 * mm)]
+    from reportlab.lib.styles import ParagraphStyle
+    cel = ParagraphStyle("cel", parent=S["txt"], leading=12)
     for i, (rub, lignes) in enumerate(fs["rubriques"].items(), 1):
-        t = Table([[Paragraph(lib, S["txt"]), Paragraph(str(val), S["txt"])] for lib, val in lignes],
+        t = Table([[Paragraph(lib, cel), Paragraph(str(val), cel)] for lib, val in lignes],
                   colWidths=[74 * mm, 100 * mm])
         t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.3, FILET), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                                ("TEXTCOLOR", (0, 0), (0, -1), GRIS), ("TOPPADDING", (0, 0), (-1, -1), 2),
@@ -373,7 +375,7 @@ def generer_fiche_synthetique(fiche: dict, chemin: Path, aujourd_hui: date | Non
     h += [Spacer(1, 2 * mm), Paragraph("La fiche est mise à jour chaque année, dans les deux mois qui suivent la "
                                        "notification du procès-verbal de l'AG qui a approuvé les comptes.", S["petit"])]
     pied = f"{c['nom']} – fiche synthétique"
-    _doc(chemin, "Fiche synthétique").build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    _doc(chemin, "Fiche synthétique").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -381,13 +383,27 @@ def generer_pre_etat_date(fiche: dict, pre: dict, chemin: Path) -> Path:
     from reportlab.lib.units import mm
     from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
-    from avis_appel import ACCENT, FOND, S, euros, tableau, tampon
+    from avis_appel import ACCENT, FOND, S, essentiel, euros, tableau, tampon, CanevasNumerote
     c = fiche["copropriete"]
     lots_txt = ", ".join(f"lot {l['numero']} ({l['desc'] or l['type']})" for l in pre["lots"])
     jour = date.fromisoformat(pre["etabli_le"])
     h = [Paragraph("Pré-état daté", S["titre"]),
          Paragraph(f"{c['nom']} · vendeur : {pre['vendeur']['nom']} · {lots_txt} · établi le {jour:%d/%m/%Y}", S["sous"]),
          Spacer(1, 5 * mm)]
+    nb_appels = len(pre["echeancier"]) or 1
+    chiffres = [(f"Charges {pre['exercice']}", euros(pre["total_annuel_lots"]),
+                 f"budget voté, soit {euros(pre['total_annuel_lots'] / nb_appels)} par appel")]
+    if pre["fonds_travaux"]["part_lots"] is not None:
+        chiffres.append(("Fonds de travaux", euros(pre["fonds_travaux"]["part_lots"]),
+                         "part des lots, acquise au syndicat"))
+    if pre["plan"]:
+        lourde = max(pre["plan"]["annees"], key=lambda a: a["total"])
+        chiffres.append(("Plan de travaux", euros(pre["plan"]["total"]),
+                         f"sur 10 ans, dont {euros(lourde['total'])} en {lourde['annee']}"))
+    du = pre["impayes_vendeur"]
+    chiffres.append(("Dû par le vendeur", "à compléter" if du is None else "aucune somme" if du == 0 else euros(du),
+                     "d'après la comptabilité du syndic"))
+    h += [essentiel(chiffres), Spacer(1, 6 * mm)]
     if pre["a_completer"]:
         txt = "<b>À compléter par le syndic</b>, d'après sa comptabilité :<br/>" + "<br/>".join(f"• {x}" for x in pre["a_completer"])
         t = Table([[Paragraph(txt, S["txt"])]], colWidths=[174 * mm])
@@ -465,7 +481,7 @@ def generer_pre_etat_date(fiche: dict, pre: dict, chemin: Path) -> Path:
                         "plan. Détail complet dans le document « 03_plan_travaux.pdf ».", S["petit"]), Spacer(1, 5 * mm)]
     h += [Paragraph(AVERTISSEMENT, S["petit"])]
     pied = f"{c['nom']} – pré-état daté – {pre['vendeur']['nom']}"
-    _doc(chemin, "Pré-état daté").build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    _doc(chemin, "Pré-état daté").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -473,7 +489,7 @@ def generer_bordereau(fiche: dict, pre: dict, items: list[dict], chemin: Path) -
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, Spacer
 
-    from avis_appel import S, tableau, tampon
+    from avis_appel import S, tableau, tampon, CanevasNumerote
     c = fiche["copropriete"]
     etats = {"fourni": "Fourni", "depose": "Joint", "a_joindre": "À joindre", "a_completer": "À compléter",
              "deja_detenu": "Déjà détenu"}
@@ -495,7 +511,7 @@ def generer_bordereau(fiche: dict, pre: dict, items: list[dict], chemin: Path) -
                    "et ne figurent pas dans ce dossier.", S["petit"]),
          Spacer(1, 3 * mm), Paragraph(AVERTISSEMENT, S["petit"])]
     pied = f"{c['nom']} – dossier de vente – {pre['vendeur']['nom']}"
-    _doc(chemin, "Dossier de vente").build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    _doc(chemin, "Dossier de vente").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 

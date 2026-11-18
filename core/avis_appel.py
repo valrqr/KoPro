@@ -28,6 +28,7 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -36,20 +37,31 @@ from fiche_copro import appel_par_lot, charger_fiche, rubriques, valider  # noqa
 # --------------------------------------------------------------------------- #
 # Mise en forme
 # --------------------------------------------------------------------------- #
-ENCRE = colors.HexColor("#1F2933")
-GRIS = colors.HexColor("#616E7C")
-FILET = colors.HexColor("#CBD2D9")
-FOND = colors.HexColor("#F5F7FA")
-ACCENT = colors.HexColor("#2F5D8A")
+# Charte : noir et blanc, comme le logo, et une seule couleur vive (ORANGE) réservée
+# aux chiffres importants. L'orange est assez foncé pour rester lisible en petit et
+# ressort en gris moyen sur une imprimante noir et blanc.
+ENCRE = colors.HexColor("#1E1E1E")      # le noir du logo
+GRIS = colors.HexColor("#5C5C5C")
+FILET = colors.HexColor("#D4D4D4")
+FOND = colors.HexColor("#F4F4F4")
+ACCENT = ENCRE                          # cadres, filets, encadrés : en noir
+ORANGE = colors.HexColor("#C2410C")     # chiffres importants uniquement
+ORANGE_HTML = "#C2410C"                 # la même, pour les balises <font> des paragraphes
+
+
+def fort(texte: str) -> str:
+    """Chiffre important dans un paragraphe : gras et orange."""
+    return f"<font color='{ORANGE_HTML}'><b>{texte}</b></font>"
+MARGE_HAUTE = 20 * mm                   # place du bandeau d'en-tête
 
 base = getSampleStyleSheet()
 S = {
-    "titre": ParagraphStyle("titre", parent=base["Title"], fontName="Helvetica-Bold", fontSize=18,
+    "titre": ParagraphStyle("titre", parent=base["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24,
                             textColor=ENCRE, alignment=0, spaceAfter=2),
-    "sous": ParagraphStyle("sous", parent=base["Normal"], fontSize=10.5, textColor=GRIS),
-    "txt": ParagraphStyle("txt", parent=base["Normal"], fontSize=9.5, leading=13, textColor=ENCRE),
-    "petit": ParagraphStyle("petit", parent=base["Normal"], fontSize=8, leading=10.5, textColor=GRIS),
-    "droite": ParagraphStyle("droite", parent=base["Normal"], fontSize=9.5, leading=13,
+    "sous": ParagraphStyle("sous", parent=base["Normal"], fontSize=11, leading=14, textColor=GRIS),
+    "txt": ParagraphStyle("txt", parent=base["Normal"], fontSize=10, leading=14, textColor=ENCRE),
+    "petit": ParagraphStyle("petit", parent=base["Normal"], fontSize=9, leading=12, textColor=GRIS),
+    "droite": ParagraphStyle("droite", parent=base["Normal"], fontSize=10, leading=14,
                              textColor=ENCRE, alignment=TA_RIGHT),
 }
 
@@ -74,6 +86,11 @@ def euros(m: Decimal) -> str:
     return f"{s} €"
 
 
+def euros_rond(m: Decimal) -> str:
+    """1234.5 -> '1 235 €' : pour les chiffres clés, où les centimes encombrent."""
+    return f"{Decimal(m):,.0f}".replace(",", "\u00a0") + "\u00a0€"
+
+
 def fr(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
@@ -82,45 +99,108 @@ ICONE = Path(__file__).resolve().parent / "ressources" / "icone.png"
 
 
 def tampon(projet: bool, pied: str):
-    """Dessine le pied de page et, en mode projet, la mention PROJET en filigrane."""
+    """Bandeau d'en-tête (icône et nom Mitoyen, type de document, copropriété), pied de
+    page et, en mode projet, la mention PROJET en filigrane. Le numéro « Page x sur y »
+    est posé par CanevasNumerote, une fois le nombre de pages connu."""
+    copro = pied.split(" – ")[0]
+
     def _dessiner(canvas, doc):
         canvas.saveState()
-        if ICONE.is_file():                 # icône Mitoyen en haut à droite, dans la marge
-            canvas.drawImage(str(ICONE), A4[0] - 18 * mm - 11 * mm, A4[1] - 15.5 * mm, width=11 * mm,
-                             height=10.4 * mm, mask="auto", preserveAspectRatio=True)
+        haut, g, d = A4[1], 18 * mm, A4[0] - 18 * mm
+        y = haut - 11 * mm                                  # ligne de base du bandeau
+        if ICONE.is_file():
+            canvas.drawImage(str(ICONE), g, y - 1 * mm, width=7.4 * mm, height=7 * mm, mask="auto",
+                             preserveAspectRatio=True)
+        canvas.setFillColor(ENCRE)
+        canvas.setFont("Helvetica-Bold", 13)
+        canvas.drawString(g + 9.5 * mm, y + 1 * mm, "Mitoyen")
+        canvas.setFont("Helvetica-Bold", 9)
+        canvas.drawRightString(d, y + 3 * mm, (doc.title or "").split(" – ")[0].upper())
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(GRIS)
+        canvas.drawRightString(d, y - 1.5 * mm, copro)
+        canvas.setStrokeColor(ENCRE)
+        canvas.setLineWidth(1.2)
+        canvas.line(g, y - 3.5 * mm, d, y - 3.5 * mm)
         if projet:
             canvas.setFont("Helvetica-Bold", 90)
-            canvas.setFillColor(colors.Color(0.85, 0.2, 0.2, alpha=0.12))
+            canvas.setFillColor(colors.Color(0.76, 0.25, 0.05, alpha=0.10))
             canvas.translate(A4[0] / 2, A4[1] / 2)
             canvas.rotate(35)
             canvas.drawCentredString(0, 0, "PROJET")
             canvas.rotate(-35)
             canvas.translate(-A4[0] / 2, -A4[1] / 2)
-        canvas.setFont("Helvetica", 7.5)
+        canvas.setStrokeColor(FILET)
+        canvas.setLineWidth(0.5)
+        canvas.line(g, 16 * mm, d, 16 * mm)
+        canvas.setFont("Helvetica", 8)
         canvas.setFillColor(GRIS)
-        canvas.drawString(18 * mm, 12 * mm, pied)
-        canvas.drawRightString(A4[0] - 18 * mm, 12 * mm, f"Page {doc.page}")
+        canvas.drawString(g, 11.5 * mm, pied)
         canvas.restoreState()
     return _dessiner
 
 
-def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1, grand: bool = False):
+class CanevasNumerote(rl_canvas.Canvas):
+    """Canevas qui attend la fin du document pour écrire « Page x sur y »."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pages = []
+
+    def showPage(self):
+        self._pages.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._pages)
+        for etat in self._pages:
+            self.__dict__.update(etat)
+            self.setFont("Helvetica", 8)
+            self.setFillColor(GRIS)
+            self.drawRightString(A4[0] - 18 * mm, 11.5 * mm, f"Page {self._pageNumber} sur {total}")
+            super().showPage()
+        super().save()
+
+
+def essentiel(chiffres: list[tuple[str, str, str]], grand: bool = False, largeur: float = 174 * mm):
+    """Encadré « L'essentiel » : 2 à 4 chiffres clés en gros, en orange, chacun avec
+    son libellé au-dessus et une précision en dessous. chiffres = [(libellé, valeur, précision)]."""
+    n = len(chiffres)
+    lib = ParagraphStyle("ess_lib", fontName="Helvetica-Bold", fontSize=12 if grand else 8.5,
+                         leading=15 if grand else 11, textColor=GRIS)
+    val = ParagraphStyle("ess_val", fontName="Helvetica-Bold", fontSize=22 if grand else 17,
+                         leading=27 if grand else 21, textColor=ORANGE)
+    note = ParagraphStyle("ess_note", fontName="Helvetica", fontSize=12 if grand else 8.5,
+                          leading=15 if grand else 11, textColor=ENCRE)
+    cellules = [[Paragraph(l.upper(), lib), Paragraph(v, val), Paragraph(p, note)] for l, v, p in chiffres]
+    t = Table([cellules], colWidths=[largeur / n] * n)
+    style = [("LINEABOVE", (0, 0), (-1, 0), 2, ENCRE), ("LINEBELOW", (0, 0), (-1, 0), 0.5, ENCRE),
+             ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+             ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 6)]
+    style += [("LINEBEFORE", (i, 0), (i, 0), 0.5, FILET) for i in range(1, n)]
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1, grand: bool = False,
+            serre: bool = False):
+    """serre=True : lignes plus rapprochées, pour les longues listes (même taille de texte)."""
     t = Table(donnees, colWidths=largeurs, repeatRows=1)
     style = [
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 12 if grand else 8.5),
-        ("FONT", (0, 1), (-1, -1), "Helvetica", 13 if grand else 9),
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 12 if grand else 9),
+        ("FONT", (0, 1), (-1, -1), "Helvetica", 13 if grand else 10),
         ("TEXTCOLOR", (0, 0), (-1, 0), GRIS),
         ("TEXTCOLOR", (0, 1), (-1, -1), ENCRE),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, ENCRE),
         ("LINEBELOW", (0, 1), (-1, -1 - lignes_total), 0.3, FILET),
         ("ALIGN", (aligner_droite_depuis, 0), (-1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2 if serre else 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2 if serre else 4),
     ]
     if lignes_total:
         style += [
-            ("FONT", (0, -lignes_total), (-1, -1), "Helvetica-Bold", 14 if grand else 10),
+            ("FONT", (0, -lignes_total), (-1, -1), "Helvetica-Bold", 14 if grand else 10.5),
             ("LINEABOVE", (0, -lignes_total), (-1, -lignes_total), 0.8, ENCRE),
             ("BACKGROUND", (0, -lignes_total), (-1, -1), FOND),
         ]
@@ -166,7 +246,7 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
 
     chemin = dossier / f"avis_{cid}.pdf"
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm,
                             title=f"Appel de fonds {exercice} T{trimestre} – {copro['nom']}")
     h = []
 
@@ -218,13 +298,13 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
     cpt = adf["compte_separe"]
     ref = adf["reference_virement"].format(exercice=exercice, trimestre=trimestre, coproprietaire=cid)
     if paiement_mode == "prelevement":
-        action = (f"<b>Rien à faire</b> : {euros(total)} seront prélevés sur votre compte le <b>{fr(exigibilite)}</b>, "
+        action = (f"<b>Rien à faire</b> : {fort(euros(total))} seront prélevés sur votre compte le {fort(fr(exigibilite))}, "
                   f"selon le mandat de prélèvement que vous avez signé.")
     elif cheque_possible:
-        action = (f"Payer <b>{euros(total)}</b> avant le <b>{fr(exigibilite)}</b> : par chèque à l'ordre du "
+        action = (f"Payer {fort(euros(total))} avant le {fort(fr(exigibilite))} : par chèque à l'ordre du "
                   f"« {cpt['titulaire']} », avec le talon en bas de page, ou par virement (référence {ref}).")
     else:
-        action = f"Payer <b>{euros(total)}</b> avant le <b>{fr(exigibilite)}</b>, par virement (référence {ref})."
+        action = f"Payer {fort(euros(total))} avant le {fort(fr(exigibilite))}, par virement (référence {ref})."
     i = h.index(MARQUE_TOTAL)
     h[i:i + 1] = [papier.encadre_action(action, st), Spacer(1, 6 * mm)]
 
@@ -269,7 +349,7 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
 
     pied = (f"{ident['nom']} – document préparé par l'assistant du syndic"
             + (" – PROJET, non valable avant validation" if projet else ""))
-    doc.build(h, onFirstPage=tampon(projet, pied), onLaterPages=tampon(projet, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(projet, pied), onLaterPages=tampon(projet, pied))
     return chemin, total
 
 
@@ -283,7 +363,7 @@ def generer_recap(fiche, totaux, trimestre, dossier, projet, canaux: dict | None
     copros = {c["id"]: c for c in fiche["coproprietaires"]}
     chemin = dossier / "recap_syndic.pdf"
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm,
                             title=f"Récapitulatif appel de fonds {exercice} T{trimestre}")
     h = [Paragraph(f"Récapitulatif – appel {trimestre} de l'exercice {exercice}", S["titre"]),
          Paragraph(f"{ident['nom']} · émission le {fr(emission)} · exigible le {fr(exigibilite)}", S["sous"]),
@@ -311,7 +391,7 @@ def generer_recap(fiche, totaux, trimestre, dossier, projet, canaux: dict | None
                                    ("LEFTPADDING", (0, 0), (-1, -1), 10), ("TOPPADDING", (0, 0), (-1, -1), 8)]))
     h.append(signature)
     pied = f"{ident['nom']} – feuille de contrôle interne, ne pas diffuser"
-    doc.build(h, onFirstPage=tampon(projet, pied), onLaterPages=tampon(projet, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(projet, pied), onLaterPages=tampon(projet, pied))
     return chemin
 
 

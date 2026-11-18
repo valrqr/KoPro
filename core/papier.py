@@ -208,7 +208,7 @@ def generer_mandat_sepa(fiche: dict, cid: str, chemin: Path) -> Path:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    from avis_appel import FILET, styles, tampon
+    from avis_appel import FILET, styles, tampon, CanevasNumerote
 
     c = _copro(fiche, cid)
     cpt = fiche["appels_de_fonds"]["compte_separe"]
@@ -218,7 +218,7 @@ def generer_mandat_sepa(fiche: dict, cid: str, chemin: Path) -> Path:
     prefixe = fiche["appels_de_fonds"]["reference_virement"].split("-")[0]
     rum = (c.get("mandat_sepa") or {}).get("rum") or f"{prefixe}-{cid}"
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title="Mandat de prélèvement SEPA")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Mandat de prélèvement SEPA")
     h = [Paragraph("Mandat de prélèvement SEPA", st["titre"]),
          Paragraph(f"Paiement récurrent des appels de fonds · Référence unique du mandat (RUM) : <b>{rum}</b>", st["sous"]),
          Spacer(1, 5 * mm),
@@ -252,7 +252,7 @@ def generer_mandat_sepa(fiche: dict, cid: str, chemin: Path) -> Path:
                     "moment en prévenant le syndic.", st["txt"]),
           Spacer(1, 4 * mm), Paragraph(MENTION_PAPIER, st["petit"])]
     pied = f"{fiche['copropriete']['nom']} – mandat de prélèvement SEPA – {c['nom']}"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -264,7 +264,7 @@ def generer_bulletin(fiche: dict, dossier: dict, sondage: dict, cid: str, comp: 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-    from avis_appel import euros, styles, tableau, tampon
+    from avis_appel import euros, styles, tableau, tampon, CanevasNumerote
     from ag import _case
 
     c = _copro(fiche, cid)
@@ -280,7 +280,7 @@ def generer_bulletin(fiche: dict, dossier: dict, sondage: dict, cid: str, comp: 
     devis = {d["id"]: d for d in comp["devis"]}
 
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title=f"Bulletin – {dossier['titre']}")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title=f"Bulletin – {dossier['titre']}")
     h = [Paragraph("Votre avis sur les devis", st["titre"]),
          Paragraph(f"{fiche['copropriete']['nom']} · {dossier['titre']} · {c['nom']}", st["sous"]),
          Spacer(1, 4 * mm),
@@ -309,7 +309,7 @@ def generer_bulletin(fiche: dict, dossier: dict, sondage: dict, cid: str, comp: 
                     "reçu un lien personnel, une seule réponse est comptée : la dernière reçue avant la clôture.",
                     st["petit"])]
     pied = f"{fiche['copropriete']['nom']} – bulletin de sondage {sondage['id']} – {c['nom']}"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -409,7 +409,7 @@ def _generer_affiche_a4(fiche: dict, racine: Path, copro: str, chemin: Path, jou
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    from avis_appel import ACCENT, ENCRE, FOND, GRIS, tampon
+    from avis_appel import ACCENT, ENCRE, FOND, GRIS, tampon, CanevasNumerote
 
     jour = jour or date.today()
     c = contenu_affiche(fiche, racine, copro, jour)
@@ -428,12 +428,13 @@ def _generer_affiche_a4(fiche: dict, racine: Path, copro: str, chemin: Path, jou
         return [t, Spacer(1, 5 * mm)]
 
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title=f"Affiche du hall – {c['mois']}")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title=f"Affiche du hall – {c['mois']}")
     h = [Paragraph(f"La vie de la {fiche['copropriete']['nom']}", T),
          Paragraph(f"{c['mois'].capitalize()} · à lire dans le hall", ST), Spacer(1, 7 * mm)]
     a = c["prochaine_ag"]
     if a:
-        lignes = [f"<b>{a['date'].day} {MOIS[a['date'].month - 1]} {a['date'].year} à {a['heure']}</b> — {a['lieu']}",
+        from avis_appel import fort
+        lignes = [f"{fort(f"{a['date'].day} {MOIS[a['date'].month - 1]} {a['date'].year} à {a['heure']}")} — {a['lieu']}",
                   "Au programme : " + " · ".join(a["points"][:MAX_POINTS_AG])
                   + (f" et {len(a['points']) - MAX_POINTS_AG} autre(s) point(s)" if len(a["points"]) > MAX_POINTS_AG else ""),
                   "Vous recevrez votre convocation et le formulaire pour voter par correspondance."]
@@ -461,7 +462,7 @@ def _generer_affiche_a4(fiche: dict, racine: Path, copro: str, chemin: Path, jou
     h.append(Paragraph("Cette affiche ne contient aucune information personnelle (ni montant individuel, ni vote "
                        "nominatif). Préparée par l'assistant Mitoyen pour le syndic.", PP))
     pied = f"{fiche['copropriete']['nom']} – affiche du hall – {c['mois']}"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 

@@ -594,7 +594,7 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
     from reportlab.lib.units import mm
     from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    from avis_appel import ACCENT, FOND, GRIS, S, tableau, tampon
+    from avis_appel import ACCENT, FOND, GRIS, ORANGE, S, essentiel, tableau, tampon, CanevasNumerote
 
     jour = aujourd_hui or date.today()
     p = plan_de(fiche)
@@ -604,10 +604,10 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
     conf = conformite(fiche, jour, suivi)
     qp = quotes_parts(fiche, proj)
     ident = fiche["copropriete"]
-    ROUGE = colors.HexColor("#C2410C")
+    ROUGE = ORANGE
 
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm,
                             title=f"Plan de travaux – {ident['nom']}")
     statut = (f"adopté en AG le {p['adopte_le']:%d/%m/%Y}" if p["statut"] == "adopte" else "projet, pas encore adopté")
     h = [Paragraph("Plan de travaux · projection sur 10 ans", S["titre"]),
@@ -615,6 +615,13 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
                    f"({statut}) · projection du {jour:%d/%m/%Y}", S["sous"]),
          Spacer(1, 5 * mm)]
 
+    tot = proj["totaux"]
+    chiffres = [("Travaux prévus", _e(tot["travaux"]), f"de {proj['annee_debut']} à {proj['annee_fin']}"),
+                ("À appeler en plus", _e(tot["appels_complementaires"]) if tot["appels_complementaires"] else "rien",
+                 f"surtout en {tot['annee_plus_lourde']}" if tot["appels_complementaires"] else "le fonds suffit"),
+                ("Cotisation lissée", f"{_e(lis['cotisation_lissee'])}/an",
+                 f"au lieu de {_e(proj['cotisation'])}/an aujourd'hui")]
+    h += [essentiel(chiffres), Spacer(1, 5 * mm)]
     bref = Table([[Paragraph(f"<b>En bref</b><br/>{en_bref(fiche, proj, lis, cmin)}", S["txt"])]], colWidths=[174 * mm])
     bref.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.8, ACCENT),
                               ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
@@ -642,7 +649,7 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
     g.valueAxis.strokeColor = colors.white
     g.valueAxis.gridStrokeColor = colors.HexColor("#E4E7EB")
     g.valueAxis.visibleGrid = True
-    g.bars[0].fillColor, g.bars[1].fillColor = ACCENT, ROUGE
+    g.bars[0].fillColor, g.bars[1].fillColor = colors.HexColor("#A3A3A3"), ROUGE
     g.bars.strokeColor = None
     g.barWidth = 8
     dessin.add(g)
@@ -651,7 +658,7 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
     leg.fontSize, leg.fontName = 7.5, "Helvetica"
     leg.columnMaximum, leg.alignment, leg.dx, leg.dy, leg.dxTextSpace = 1, "right", 7, 7, 4
     leg.deltax = 55 * mm
-    leg.colorNamePairs = [(ACCENT, "Payé par le fonds de travaux"), (ROUGE, "À appeler en plus")]
+    leg.colorNamePairs = [(colors.HexColor("#A3A3A3"), "Payé par le fonds de travaux"), (ROUGE, "À appeler en plus")]
     dessin.add(leg)
     dessin.add(String(largeur - 4 * mm, hauteur - 3 * mm, f"Cotisation simulée : {_e(proj['cotisation'])} / an",
                       fontName="Helvetica", fontSize=7.5, fillColor=GRIS, textAnchor="end"))
@@ -691,7 +698,7 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
     tl = [["", "Travaux", "Catégorie", "Prio.", "Année", "Suivi", "Estimation"]]
     for l in lignes(fiche, suivi):
         annee = str(l["annee"]) + (f" (au lieu de {l['annee_prevue']})" if l["annee"] != l["annee_prevue"] else "")
-        cle = "" if l["cle"] == fiche["fonds_travaux"]["cle"] else f"<br/><font size='7' color='#616E7C'>clé {cles[l['cle']]['libelle'].lower()}</font>"
+        cle = "" if l["cle"] == fiche["fonds_travaux"]["cle"] else f"<br/><font size='7' color='#5C5C5C'>clé {cles[l['cle']]['libelle'].lower()}</font>"
         tl.append([l["id"], Paragraph(l["intitule"] + cle, S["txt"]), Paragraph(l["categorie_libelle"], S["txt"]),
                    str(l["priorite"]), Paragraph(annee, S["txt"]),
                    Paragraph(l["statut_libelle"] + (f"<br/><font size='7'>{l['dossier']}</font>" if l["dossier"] else ""),
@@ -725,7 +732,7 @@ def generer_pdf(fiche: dict, chemin: Path, suivi: dict | None = None, cotisation
           Spacer(1, 5 * mm), Paragraph(AVERTISSEMENT, S["petit"])]
 
     pied = f"{ident['nom']} – plan de travaux préparé par l'assistant du syndic"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 

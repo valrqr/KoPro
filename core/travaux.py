@@ -302,31 +302,43 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
     from reportlab.lib.units import mm
     from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    from avis_appel import ACCENT, FOND, S, euros, tableau, tampon
+    from avis_appel import ACCENT, FOND, S, essentiel, euros, euros_rond, tableau, tampon, CanevasNumerote
 
     jour = aujourd_hui or date.today()
     d, comp, aig = synth["dossier"], synth["comparatif"], synth["aiguillage"]
     ident = fiche["copropriete"]
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title=f"Comparatif des devis – {d['titre']}")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title=f"Comparatif des devis – {d['titre']}")
     h = [Paragraph(f"Comparatif des devis", S["titre"]),
          Paragraph(f"{ident['nom']} · {d['titre']} · {NATURES[d['nature']]}"
                    f"{' · URGENT' if d['urgence'] else ''} · établi le {jour:%d/%m/%Y}", S["sous"]),
-         Spacer(1, 5 * mm)]
+         Spacer(1, 4 * mm)]
     if d.get("description"):
-        h += [Paragraph(d["description"], S["txt"]), Spacer(1, 5 * mm)]
+        h += [Paragraph(d["description"], S["txt"]), Spacer(1, 4 * mm)]
+    # Chiffres clés, volontairement neutres : aucun devis n'est mis en avant
+    montants = [l["montant_ttc"] for l in comp["devis"] if not l["expire"]] or [l["montant_ttc"] for l in comp["devis"]]
+    if montants:
+        nb_exp = sum(1 for l in comp["devis"] if l["expire"])
+        qui = {"assemblee_generale": "L'AG", "conseil_syndical": "Le conseil", "syndic": "Le syndic",
+               "syndic_urgence": "Le syndic"}.get(aig["circuit"], "à définir")
+        maj = (aig.get("majorite") or "").split(" : ")[0].replace("Article", "article")
+        h += [essentiel([
+            ("Devis reçus", str(len(comp["devis"])), f"dont {nb_exp} expiré{'s' if nb_exp > 1 else ''}" if nb_exp else "tous valides"),
+            ("Fourchette TTC", f"{euros_rond(min(montants))} à {euros_rond(max(montants))}" if len(montants) > 1 else euros_rond(montants[0]),
+             "devis en cours de validité" if nb_exp else "de tous les devis"),
+            ("Qui décide", qui, maj or "voir ci-dessous")]), Spacer(1, 4 * mm)]
 
     r = synth.get("resume_ia")
     if r and r.get("statut") == "valide" and not r.get("obsolete"):
         texte = (f"<b>En bref</b><br/>{_echapper(r['resume'])}"
-                 f"<br/><font size='7.5' color='#616E7C'>Résumé rédigé par une IA (Mistral) à partir des devis, "
+                 f"<br/><font size='7.5' color='#5C5C5C'>Résumé rédigé par une IA (Mistral) à partir des devis, "
                  f"relu et validé par le syndic le {date.fromisoformat(r['valide_le']):%d/%m/%Y}. "
                  f"Il décrit les différences sans recommander de devis : se référer aux devis joints.</font>")
         bref = Table([[Paragraph(texte, S["txt"])]], colWidths=[174 * mm])
         bref.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.8, ACCENT),
                                   ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                                   ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
-        h += [bref, Spacer(1, 6 * mm)]
+        h += [bref, Spacer(1, 4 * mm)]
 
     lignes = [["Devis", "Entreprise", "HT", "TVA", "TTC", "Écart", "Délai"]]
     for l in comp["devis"]:
@@ -339,19 +351,19 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
                        f"{l['delai_jours']} j" if l.get("delai_jours") else "—"])
     h.append(tableau(lignes, [14 * mm, 44 * mm, 24 * mm, 14 * mm, 26 * mm, 34 * mm, 18 * mm],
                      aligner_droite_depuis=2, lignes_total=0))
-    h.append(Spacer(1, 6 * mm))
+    h.append(Spacer(1, 4 * mm))
 
     bloc = (f"<b>{aig['titre']}</b><br/>{aig['explication']}"
             + (f"<br/>Majorité : {aig['majorite']}" if aig.get("majorite") else "")
             + "".join(f"<br/>• {e}" for e in aig["etapes"])
             + "".join(f"<br/>{n}" for n in aig["notes"])
-            + f"<br/><font size='7.5' color='#616E7C'>{aig['avertissement']}</font>")
+            + f"<br/><font size='7.5' color='#5C5C5C'>{aig['avertissement']}</font>")
     encadre = Table([[Paragraph(bloc, S["txt"])]], colWidths=[174 * mm])
     encadre.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), FOND),
                                  ("LINEBEFORE", (0, 0), (0, -1), 2.5, ACCENT),
                                  ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                                 ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
-    h += [KeepTogether([Paragraph("Qui décide ?", S["sous"]), Spacer(1, 2 * mm), encadre]), Spacer(1, 6 * mm)]
+                                 ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    h += [encadre, Spacer(1, 4 * mm)]
 
     verifs = [l for l in comp["devis"] if l.get("verification")]
     if verifs:
@@ -368,11 +380,11 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
                            f"{date.fromisoformat(verifs[0]['verification']['verifie_le']):%d/%m/%Y}", S["sous"]))
         h.append(Spacer(1, 2 * mm))
         h.append(tableau(lv, [14 * mm, 80 * mm, 80 * mm], aligner_droite_depuis=3, lignes_total=0))
-        h.append(Spacer(1, 6 * mm))
+        h.append(Spacer(1, 4 * mm))
 
     if comp["alertes"]:
         h.append(Paragraph("<b>Points d'attention</b><br/>" + "<br/>".join(f"• {a}" for a in comp["alertes"]), S["txt"]))
-        h.append(Spacer(1, 6 * mm))
+        h.append(Spacer(1, 4 * mm))
 
     ids = [l["id"] for l in comp["devis"]]
     qp = [["Copropriétaire", "Tantièmes"] + ids]
@@ -382,8 +394,8 @@ def generer_pdf(fiche: dict, synth: dict, chemin: Path, aujourd_hui: date | None
     largeur_devis = (174 - 50 - 26) / max(len(ids), 1)
     h.append(Paragraph(f"Quote-part de chaque copropriétaire · clé « {comp['cle_libelle']} »", S["sous"]))
     h.append(Spacer(1, 2 * mm))
-    h.append(tableau(qp, [50 * mm, 26 * mm] + [largeur_devis * mm] * len(ids), aligner_droite_depuis=1))
+    h.append(tableau(qp, [50 * mm, 26 * mm] + [largeur_devis * mm] * len(ids), aligner_droite_depuis=1, serre=True))
 
     pied = f"{ident['nom']} – comparatif préparé par l'assistant du syndic"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin

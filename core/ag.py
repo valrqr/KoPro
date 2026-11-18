@@ -430,13 +430,18 @@ def _styles():
     return ACCENT, FOND, GRIS, S, tableau, tampon
 
 
+def _canevas():
+    from avis_appel import CanevasNumerote
+    return CanevasNumerote
+
+
 def _case():
     """Case à cocher dessinée (la police intégrée n'a pas le caractère ☐)."""
     from reportlab.graphics.shapes import Drawing, Rect
     from reportlab.lib import colors
     from reportlab.lib.units import mm
     d = Drawing(4.5 * mm, 4.5 * mm)
-    d.add(Rect(0, 0, 4.5 * mm, 4.5 * mm, strokeColor=colors.HexColor("#1F2933"), strokeWidth=0.8,
+    d.add(Rect(0, 0, 4.5 * mm, 4.5 * mm, strokeColor=colors.HexColor("#1E1E1E"), strokeWidth=0.8,
                fillColor=colors.white))
     return d
 
@@ -462,7 +467,7 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
     base = fiche["cles_repartition"]["generales"]["base"]
 
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title="Formulaire de vote par correspondance")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Formulaire de vote par correspondance")
     h = [Paragraph("Formulaire de vote par correspondance", S["titre"]),
          Paragraph("Assemblée générale des copropriétaires · modèle de l'arrêté du 2 juillet 2020", S["sous"]),
          Spacer(1, 5 * mm)]
@@ -492,12 +497,12 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
     lignes = [["Question", "Identification de l'objet", "Pour", "Contre", "Abstention"]]
     for r in ag["resolutions"]:
         cle = ("" if r["cle"] == "generales"
-               else f"<br/><font size='7' color='#616E7C'>Vote des seuls copropriétaires concernés "
+               else f"<br/><font size='8' color='#5C5C5C'>Vote des seuls copropriétaires concernés "
                     f"({_e(fiche['cles_repartition'][r['cle']]['libelle'].lower())})</font>")
         lignes.append([f"Résolution n° {r['num']}",
-                       Paragraph(f"{_e(r['titre'])}<br/><font size='7' color='#616E7C'>{MAJORITES[r['majorite']]}</font>{cle}",
+                       Paragraph(f"{_e(r['titre'])}<br/><font size='8' color='#5C5C5C'>{MAJORITES[r['majorite']]}</font>{cle}",
                                  S["txt"]), _case(), _case(), _case()])
-    tv = tableau(lignes, [24 * mm, 102 * mm, 16 * mm, 16 * mm, 16 * mm], aligner_droite_depuis=5, lignes_total=0)
+    tv = tableau(lignes, [29 * mm, 97 * mm, 16 * mm, 16 * mm, 16 * mm], aligner_droite_depuis=5, lignes_total=0)
     tv.setStyle(TableStyle([("ALIGN", (2, 0), (-1, -1), "CENTER")]))
     h += [tv, Spacer(1, 8 * mm),
           KeepTogether([Paragraph("Fait à ............................................, le ...... / ...... / ............",
@@ -525,7 +530,7 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
                                  ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     h += [Spacer(1, 2 * mm), encadre]
     pied = f"{ident['nom']} – AG du {d:%d/%m/%Y} – {c['nom']}"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=_canevas(), onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -539,7 +544,7 @@ def generer_feuille_presence(fiche: dict, ag: dict, chemin: Path) -> Path:
     ident = fiche["copropriete"]
     d = date.fromisoformat(ag["date"])
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title="Feuille de présence")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Feuille de présence")
     h = [Paragraph("Feuille de présence", S["titre"]),
          Paragraph(f"{_e(ident['nom'])} · {_e(ag['titre'])} du {d:%d/%m/%Y} à {_e(ag['heure'])}, {_e(ag['lieu'])}", S["sous"]),
          Spacer(1, 5 * mm)]
@@ -561,7 +566,7 @@ def generer_feuille_presence(fiche: dict, ag: dict, chemin: Path) -> Path:
                     "son mandant. Feuille certifiée exacte par le président de séance.", S["petit"]),
           Spacer(1, 10 * mm), Paragraph("Le président de séance : ..........................................", S["txt"])]
     pied = f"{ident['nom']} – feuille de présence de l'AG du {d:%d/%m/%Y}"
-    doc.build(h, onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
+    doc.build(h, canvasmaker=_canevas(), onFirstPage=tampon(False, pied), onLaterPages=tampon(False, pied))
     return chemin
 
 
@@ -576,7 +581,7 @@ def generer_pv(fiche: dict, ag: dict, dep: dict, chemin: Path) -> Path:
     d = date.fromisoformat(ag["date"])
     f = dep["feuille"]
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=16 * mm, bottomMargin=20 * mm, title="Procès-verbal – projet")
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Procès-verbal – projet")
     h = [Paragraph("Procès-verbal de l'assemblée générale", S["titre"]),
          Paragraph(f"{_e(ident['nom'])}, {_e(ident['adresse'])} · {_e(ag['titre'])} du {d:%d/%m/%Y} à "
                    f"{_e(ag['heure'])}, {_e(ag['lieu'])}", S["sous"]),
@@ -628,5 +633,5 @@ def generer_pv(fiche: dict, ag: dict, dep: dict, chemin: Path) -> Path:
                     "deux mois pour contester les décisions.", S["txt"]),
           Spacer(1, 4 * mm), Paragraph(AVERTISSEMENT, S["petit"])]
     pied = f"{ident['nom']} – projet de procès-verbal de l'AG du {d:%d/%m/%Y}"
-    doc.build(h, onFirstPage=tampon(True, pied), onLaterPages=tampon(True, pied))
+    doc.build(h, canvasmaker=_canevas(), onFirstPage=tampon(True, pied), onLaterPages=tampon(True, pied))
     return chemin
