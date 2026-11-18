@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Logo Mitoyen" width="200">
+  <img src="docs/logo.svg" alt="Logo Mitoyen" width="260">
 </p>
 
 # Mitoyen
