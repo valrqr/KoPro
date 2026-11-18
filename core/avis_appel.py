@@ -64,10 +64,16 @@ def fr(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
+ICONE = Path(__file__).resolve().parent / "ressources" / "icone.png"
+
+
 def tampon(projet: bool, pied: str):
     """Dessine le pied de page et, en mode projet, la mention PROJET en filigrane."""
     def _dessiner(canvas, doc):
         canvas.saveState()
+        if ICONE.is_file():                 # icône Mitoyen en haut à droite, dans la marge
+            canvas.drawImage(str(ICONE), A4[0] - 18 * mm - 11 * mm, A4[1] - 15.5 * mm, width=11 * mm,
+                             height=10.4 * mm, mask="auto", preserveAspectRatio=True)
         if projet:
             canvas.setFont("Helvetica-Bold", 90)
             canvas.setFillColor(colors.Color(0.85, 0.2, 0.2, alpha=0.12))

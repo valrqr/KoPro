@@ -7,9 +7,15 @@ accessible au clavier et aux lecteurs d'écran. Toute donnée affichée est éch
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime
 from decimal import Decimal
 from html import escape
+from pathlib import Path
+
+_ICONE = Path(__file__).resolve().parent.parent / "core" / "ressources" / "icone_64.png"
+# Icône intégrée à la page (data URI) : aucune requête vers un autre fichier ou un autre site
+ICONE_URI = ("data:image/png;base64," + base64.b64encode(_ICONE.read_bytes()).decode()) if _ICONE.is_file() else ""
 
 
 def _euros(m) -> str:
@@ -52,8 +58,10 @@ def page(titre: str, corps: str) -> str:
     return (f'<!doctype html><html lang="fr"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<meta name="robots" content="noindex, nofollow"><title>{escape(titre)} – Mitoyen</title>'
+            + (f'<link rel="icon" type="image/png" href="{ICONE_URI}">' if ICONE_URI else "") +
             f'<style>{STYLE}</style></head><body><main>'
-            f'<header><span class="marque">Mitoyen</span></header>{corps}'
+            f'<header>' + (f'<img src="{ICONE_URI}" alt="" width="34" height="32">' if ICONE_URI else "")
+            + f'<span class="marque">Mitoyen</span></header>{corps}'
             f'<footer>Lien personnel : ne le transférez pas. Page préparée par l\'assistant Mitoyen pour le syndic '
             f'de votre copropriété.</footer></main></body></html>')
 
