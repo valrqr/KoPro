@@ -1008,3 +1008,58 @@ def test_impayes_ajustements_et_echeancier():
         "coproprietaire": "CP99", "le": "2027-05-01", "libelle": "Test", "montant": "10"}).status_code == 422
     ech = c.get("/copros/mimosas/echeancier", params={"au": "2027-05-20"}, headers=H).json()
     assert any(a["type"] == "impayes" for a in ech["alertes"])
+
+
+# --------------------------------------------------------------------------- #
+# Rappels d'AG et « ajouter à mon calendrier »
+# --------------------------------------------------------------------------- #
+AG_RAPPEL = f"{AG}/2027-06-12-extra"
+
+
+def test_rappel_ag_creation_et_ics():
+    assert c.post(AG, headers=H, json={"date": "2027-06-12", "heure": "vers 10 heures", "lieu": "Hall",
+                                       "suffixe": "extra"}).status_code == 422
+    r = c.post(AG, headers=H, json={
+        "date": "2027-06-12", "heure": "10h", "lieu": "Salle commune, rez-de-chaussée", "suffixe": "extra",
+        "titre": "Assemblée générale extraordinaire", "visio": "https://visio.exemple.fr/mimosas",
+        "resolutions": [{"titre": "Ravalement de la façade côté rue, devis et calendrier", "majorite": "24"}]})
+    assert r.status_code == 201, r.text
+    ics = c.get(f"{AG_RAPPEL}/agenda.ics", headers=H)
+    assert ics.status_code == 200 and ics.headers["content-type"].startswith("text/calendar")
+    brut = ics.content
+    texte = brut.decode("utf-8")
+    assert "\r\n" in texte and "DTSTART;TZID=Europe/Paris:20270612T100000" in texte
+    assert "DTEND;TZID=Europe/Paris:20270612T120000" in texte and "BEGIN:VTIMEZONE" in texte
+    assert "LOCATION:Salle commune\\, rez-de-chaussée" in texte and "TRIGGER:-P1D" in texte
+    assert "URL:https://visio.exemple.fr/mimosas" in texte
+    assert all(len(l) <= 75 for l in brut.split(b"\r\n"))              # lignes pliées (RFC 5545)
+    deplie = texte.replace("\r\n ", "")
+    assert "avant le 08/06/2027" in deplie                              # limite du vote par correspondance
+
+
+def test_rappel_ag_j_moins_7_et_j_moins_1():
+    assert c.get(f"{AG_RAPPEL}/rappels", params={"au": "2027-06-01"}, headers=H).json()["rappel"] is None
+    c.put(f"{AG_RAPPEL}/correspondance/CP01", headers=H, json={"recu_le": "2027-06-03", "votes": {"1": "pour"}})
+    r = c.get(f"{AG_RAPPEL}/rappels", params={"au": "2027-06-05"}, headers=H).json()
+    assert r["rappel"] == "J-7" and r["fichier_ics"].endswith("/agenda.ics")
+    par = {(e["coproprietaire"], e.get("aidant", False)): e for e in r["envois"]}
+    assert "bien enregistré" in par[("CP01", False)]["texte"]
+    assert "mardi 8 juin 2027" in par[("CP02", False)]["texte"]          # date limite du vote par correspondance
+    assert "Ravalement de la façade" in par[("CP02", False)]["texte"]    # ordre du jour à J-7
+    assert "https://visio.exemple.fr/mimosas" in par[("CP02", False)]["texte"]
+    assert {x["coproprietaire"] for x in r["courrier"]} >= {"CP08", "CP13"}
+    assert ("CP13", False) not in par and par[("CP13", True)]["email"]   # courrier, mais l'aidant est prévenu
+    assert "Pour information" in par[("CP13", True)]["texte"]
+    veille = c.get(f"{AG_RAPPEL}/rappels", params={"au": "2027-06-11"}, headers=H).json()
+    assert veille["rappel"] == "J-1" and veille["objet"].startswith("C'est demain")
+    t = next(e for e in veille["envois"] if e["coproprietaire"] == "CP02")["texte"]
+    assert "pouvoir" in t and "correspondance est passé" in t and "À l'ordre du jour" not in t
+
+
+def test_rappel_ag_tous_les_rappels_du_jour():
+    r = c.get("/rappels-ag", params={"au": "2027-06-05"}, headers=H).json()
+    assert r["nb_envois"] == len(r["envois"]) > 0 and r["erreurs"] == []
+    assert all(e["fichier_ics"] == "/copros/mimosas/ag/2027-06-12-extra/agenda.ics" for e in r["envois"])
+    assert r["courriers"][0]["syndic_email"] and "Simon Paul" in r["courriers"][0]["noms"]
+    assert c.get("/rappels-ag", params={"au": "2027-06-06"}, headers=H).json()["nb_envois"] == 0
+    assert c.get("/rappels-ag").status_code == 401

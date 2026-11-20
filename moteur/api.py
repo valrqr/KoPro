@@ -61,6 +61,9 @@ Routes :
     POST /copros/{copro}/relances/{cid}                     préparer la relance proposée (PDF)
     GET  /copros/{copro}/relances/{id}.pdf                  la lettre
     PUT  /copros/{copro}/relances/{id}                      marquer envoyée (date, moyen, présentation) ou annulée
+    GET  /copros/{copro}/ag/{id}/agenda.ics                 « ajouter à mon calendrier »
+    GET  /copros/{copro}/ag/{id}/rappels?au=                rappel du jour (J-7, J-1) pour une AG
+    GET  /rappels-ag?au=                                    tous les rappels du jour, un par destinataire (n8n)
     GET  /copros/{copro}/fiche-synthetique?au=              fiche synthétique (décret 2016-1822), données manquantes
     GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
     POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
@@ -84,7 +87,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Security, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
@@ -98,6 +101,7 @@ import plan_travaux  # noqa: E402
 import vente  # noqa: E402
 import banque  # noqa: E402
 import impayes  # noqa: E402
+import rappel_ag  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -548,6 +552,10 @@ def odj_type(copro: str = Copro) -> dict:
 @app.post("/copros/{copro}/ag", status_code=201, dependencies=[Depends(verifier_cle)])
 def creer_ag(corps: NouvelleAG, copro: str = Copro) -> dict:
     fiche = fiche_de(copro)
+    try:
+        rappel_ag.heure_de(corps.heure)          # l'heure doit être lisible (rappels, agenda)
+    except rappel_ag.RappelInvalide as e:
+        raise HTTPException(422, str(e))
     resolutions = [r.model_dump() for r in corps.resolutions]
     for did in corps.dossiers:
         _, d = dossier_de(copro, did) if re.match(ID_DOSSIER, did) else (None, None)
@@ -784,6 +792,53 @@ def maj_envoi(corps: MajEnvoi, copro: str = Copro, eid: str = PathParam(..., pat
                                           corps.note)
     except papier.PapierInvalide as e:
         raise HTTPException(404 if "inconnu" in str(e).lower() and "envoi" in str(e).lower() else 422, str(e))
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/agenda.ics", dependencies=[Depends(verifier_cle)])
+def agenda_ag(copro: str = Copro, ag_id: str = AgId) -> Response:
+    try:
+        ics = rappel_ag.generer_ics(fiche_de(copro), ag_de(copro, ag_id), copro)
+    except rappel_ag.RappelInvalide as e:
+        raise HTTPException(422, str(e))
+    return Response(ics, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="ag_{ag_id}.ics"'})
+
+
+@app.get("/copros/{copro}/ag/{ag_id}/rappels", dependencies=[Depends(verifier_cle)])
+def rappels_ag(copro: str = Copro, ag_id: str = AgId, au: date | None = Query(None)) -> dict:
+    try:
+        r = rappel_ag.rappels(fiche_de(copro), ag_de(copro, ag_id), copro, au)
+    except rappel_ag.RappelInvalide as e:
+        raise HTTPException(422, str(e))
+    return r or {"copro": copro, "ag": ag_id, "rappel": None, "envois": [], "courrier": []}
+
+
+@app.get("/rappels-ag", dependencies=[Depends(verifier_cle)])
+def rappels_du_jour(au: date | None = Query(None)) -> dict:
+    """Pour le workflow quotidien : un élément par mail à envoyer, toutes copros et AG confondues.
+    Une AG à l'heure illisible est signalée au lieu de bloquer les autres."""
+    jour = au or date.today()
+    envois, courriers, erreurs = [], [], []
+    for c in lister_copros():
+        fiche = fiche_de(c)
+        for a in assemblee.lister_ag(DOSSIER_DATA, c):
+            try:
+                r = rappel_ag.rappels(fiche, ag_de(c, a["id"]), c, jour)
+            except rappel_ag.RappelInvalide as e:
+                erreurs.append({"copro": c, "ag": a["id"], "erreur": str(e)})
+                continue
+            if not r:
+                continue
+            envois += [{**e, "copro": c, "ag": a["id"], "rappel": r["rappel"], "fichier_ics": r["fichier_ics"]}
+                       for e in r["envois"]]
+            if r["courrier"]:
+                syndic = next(x for x in fiche["coproprietaires"]
+                              if x["id"] == fiche["gouvernance"]["syndic"]["coproprietaire_id"])
+                courriers.append({"copro": c, "copropriete": r["copropriete"], "ag": a["id"], "rappel": r["rappel"],
+                                  "syndic_email": syndic.get("email"), "noms": [x["nom"] for x in r["courrier"]],
+                                  "note": r["note_courrier"]})
+    return {"au": jour.isoformat(), "nb_envois": len(envois), "envois": envois, "courriers": courriers,
+            "erreurs": erreurs}
 
 
 @app.get("/copros/{copro}/ag/{ag_id}/convocations", dependencies=[Depends(verifier_cle)])

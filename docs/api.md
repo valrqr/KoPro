@@ -63,6 +63,9 @@ Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante
 | GET | `/copros/{copro}/ag/{ag}/feuille-presence.pdf` | Feuille de présence à faire émarger |
 | POST | `/copros/{copro}/ag/{ag}/depouillement` | Votes en séance et par correspondance → résultat de chaque résolution |
 | GET | `/copros/{copro}/ag/{ag}/pv.pdf` | Brouillon de procès-verbal, à relire et faire signer |
+| GET | `/copros/{copro}/ag/{ag}/agenda.ics` | Fichier « ajouter à mon calendrier » |
+| GET | `/copros/{copro}/ag/{ag}/rappels?au=` | Rappel du jour pour cette AG (J-7 ou J-1), un mail par destinataire |
+| GET | `/rappels-ag?au=` | Tous les rappels du jour, toutes copros confondues (workflow `rappel_ag.json`) |
 
 ## Pack papier
 

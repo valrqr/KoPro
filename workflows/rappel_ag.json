@@ -1,0 +1,312 @@
+{
+  "name": "Mitoyen – Rappels d'assemblée générale",
+  "nodes": [
+    {
+      "id": "b57397c4-c232-4fe9-9e0d-bad7008283d6",
+      "name": "Chaque jour à 9h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "48653aeb-b9bc-4c4e-9301-3a4ca1587016",
+      "name": "Lancement manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c327493e-d836-49dd-b80d-1c34bddf6eb9",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5d9b2430-5e35-4e6b-a76f-aecec656ab9d",
+              "name": "moteur_url",
+              "value": "http://moteur:8000",
+              "type": "string"
+            },
+            {
+              "id": "9b7fce38-5498-43e3-b78b-3e45010804d7",
+              "name": "email_expediteur",
+              "value": "mimosas@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "5a1f3179-5056-49c7-abb7-305a50c2fbbb",
+              "name": "email_test",
+              "value": "syndic@exemple.fr",
+              "type": "string"
+            },
+            {
+              "id": "1845392b-6193-4e99-840e-e2384c911c81",
+              "name": "au",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d6d12c90-123e-4420-ab96-0390de5c64bd",
+      "name": "Rappels du jour",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      },
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.moteur_url }}/rappels-ag{{ $('Config').first().json.au ? '?au=' + $('Config').first().json.au : '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "e35b8784-8bf3-4234-9878-7aa906eb0fec",
+      "name": "Un mail par destinataire",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "fieldToSplitOut": "envois",
+        "options": {}
+      }
+    },
+    {
+      "id": "f771a42b-0b3d-40e4-afd6-704c181c33e7",
+      "name": "Télécharger l'agenda (.ics)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REMPLACER",
+          "name": "Moteur syndic"
+        }
+      },
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.moteur_url }}{{ $json.fichier_ics }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bb0e48fd-f2de-4f65-af07-a96eed6ed82c",
+      "name": "Envoyer le rappel",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      },
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_test || $('Un mail par destinataire').item.json.email }}",
+        "subject": "={{ $('Config').first().json.email_test ? '[TEST ' + $('Un mail par destinataire').item.json.email + '] ' : '' }}{{ $('Un mail par destinataire').item.json.objet }}",
+        "emailFormat": "text",
+        "text": "={{ $('Un mail par destinataire').item.json.texte }}",
+        "options": {
+          "attachments": "data"
+        }
+      }
+    },
+    {
+      "id": "2d7ab608-4887-4ff7-8c37-c56e9a8f724c",
+      "name": "Copropriétaires au courrier",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        720,
+        420
+      ],
+      "parameters": {
+        "fieldToSplitOut": "courriers",
+        "options": {}
+      }
+    },
+    {
+      "id": "71c5edcf-3d10-4563-893d-1352a0828155",
+      "name": "Prévenir le syndic",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        420
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REMPLACER",
+          "name": "SMTP copro"
+        }
+      },
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.email_expediteur }}",
+        "toEmail": "={{ $('Config').first().json.email_test || $json.syndic_email }}",
+        "subject": "={{ $('Config').first().json.email_test ? '[TEST] ' : '' }}Rappel d'AG ({{ $json.rappel }}) : {{ $json.noms.length }} copropriétaire(s) au courrier",
+        "emailFormat": "text",
+        "text": "=Bonjour,\n\nLe rappel de l'assemblée générale du {{ $json.ag.slice(8,10) + '/' + $json.ag.slice(5,7) + '/' + $json.ag.slice(0,4) }} ({{ $json.copropriete }}) est parti par mail. Ces copropriétaires reçoivent leurs documents par courrier :\n\n{{ $json.noms.map(n => '- ' + n).join('\\n') }}\n\n{{ $json.note }}\n\nL'assistant du syndic",
+        "options": {}
+      }
+    },
+    {
+      "id": "770a0984-6481-4f62-b1e1-cdfe5765e155",
+      "name": "Mode d'emploi",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -60
+      ],
+      "parameters": {
+        "width": 520,
+        "height": 220,
+        "content": "## Rappels d'assemblée générale\nChaque jour à 9h, Mitoyen envoie les rappels dus ce jour-là : J-7 (avec l'ordre du jour et la date limite du vote par correspondance) et J-1. Chaque mail porte le fichier .ics « ajouter à mon calendrier ».\n\n- **email_test** rempli : tous les mails arrivent à cette adresse (l'adresse réelle est rappelée dans l'objet). Vide : envoi réel\n- **au** vide = aujourd'hui. Pour tester : la date d'un rappel, par exemple 7 jours avant une AG\n- Les copropriétaires au courrier ne reçoivent rien : le syndic reçoit leur liste\n\nLe rappel ne remplace jamais la convocation officielle."
+      }
+    }
+  ],
+  "connections": {
+    "Chaque jour à 9h": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lancement manuel": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Rappels du jour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rappels du jour": {
+      "main": [
+        [
+          {
+            "node": "Un mail par destinataire",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Copropriétaires au courrier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Un mail par destinataire": {
+      "main": [
+        [
+          {
+            "node": "Télécharger l'agenda (.ics)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Télécharger l'agenda (.ics)": {
+      "main": [
+        [
+          {
+            "node": "Envoyer le rappel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copropriétaires au courrier": {
+      "main": [
+        [
+          {
+            "node": "Prévenir le syndic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}
