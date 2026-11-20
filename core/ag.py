@@ -475,7 +475,11 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
     from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     ACCENT, FOND, GRIS, S, tableau, tampon = _styles()
+    import papier
+    from avis_appel import polices, styles
     c = _coproprietaire(fiche, cid)
+    au_courrier = papier.canal(fiche, cid)["canal"] == "courrier"     # Atkinson pour le papier
+    S = styles(False, au_courrier)
     ident = fiche["copropriete"]
     sid = fiche["gouvernance"]["syndic"]["coproprietaire_id"]
     syndic = _coproprietaire(fiche, sid)
@@ -502,7 +506,7 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
                              f"Domicile : ............................................................................", S["txt"])],
     ]
     t = Table(infos, colWidths=[42 * mm, 132 * mm])
-    t.setStyle(TableStyle([("FONT", (0, 0), (0, -1), "Helvetica-Bold", 8.5), ("TEXTCOLOR", (0, 0), (0, -1), GRIS),
+    t.setStyle(TableStyle([("FONT", (0, 0), (0, -1), polices(au_courrier)[1], 8.5), ("TEXTCOLOR", (0, 0), (0, -1), GRIS),
                            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -1), 0.3, FOND),
                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     h += [t, Spacer(1, 5 * mm),
@@ -524,7 +528,8 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
         lignes.append([f"Résolution n° {r['num']}",
                        Paragraph(f"{_e(r['titre'])}<br/><font size='8' color='#5C5C5C'>{MAJORITES[r['majorite']]}</font>{cle}",
                                  S["txt"]), _case(), _case(), _case()])
-    tv = tableau(lignes, [29 * mm, 97 * mm, 16 * mm, 16 * mm, 16 * mm], aligner_droite_depuis=5, lignes_total=0)
+    tv = tableau(lignes, [29 * mm, 97 * mm, 16 * mm, 16 * mm, 16 * mm], aligner_droite_depuis=5, lignes_total=0,
+                 papier=au_courrier)
     tv.setStyle(TableStyle([("ALIGN", (2, 0), (-1, -1), "CENTER")]))
     h += [tv, Spacer(1, 8 * mm),
           KeepTogether([Paragraph("Fait à ............................................, le ...... / ...... / ............",

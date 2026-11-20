@@ -21,7 +21,7 @@ Le moteur sert aussi une interface web, à l'adresse `/app`. Pas d'application �
 
 ## Choix de conception
 
-- **Deux polices, deux publics.** L'outil du syndic utilise Barlow, inspirée de la signalétique : fine, nette, en 16 px. Ce que voient les copropriétaires (la page de vote en ligne) utilise Atkinson Hyperlegible, dessinée pour les personnes malvoyantes.
+- **Deux polices, deux publics.** L'outil du syndic utilise Barlow, inspirée de la signalétique : fine, nette, en 16 px. La page de vote en ligne et les documents envoyés par courrier utilisent Atkinson Hyperlegible, dessinée pour les personnes malvoyantes. Les documents reçus par mail et les documents collectifs (affiches, PV, fiche synthétique) restent en Helvetica.
 - **La charte des documents.** Le noir du logo, du blanc, un gris pierre ; l'orange est réservé aux chiffres importants, comme sur les PDF.
 - **Rien d'externe.** Les polices et htmx (qui rend les boutons actifs sans recharger la page) sont servis par l'application elle-même : aucun appel à un service tiers.
 - **Le même principe que le moteur.** L'interface ne fait rien que le syndic n'ait demandé : elle prépare, il valide.

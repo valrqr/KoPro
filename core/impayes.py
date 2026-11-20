@@ -585,7 +585,8 @@ def generer_lettre(fiche: dict, rel: dict, compte: dict, a_echoir: list[dict], c
     cid = rel["coproprietaire"]
     cp = next(x for x in fiche["coproprietaires"] if x["id"] == cid)
     grand = bool(cp.get("grands_caracteres"))
-    S = styles(grand)
+    au_courrier = papier.canal(fiche, cid, jour)["canal"] == "courrier"   # Atkinson pour le papier
+    S = styles(grand, au_courrier)
     c = fiche["copropriete"]
     adf = fiche["appels_de_fonds"]
     syndic = next(x for x in fiche["coproprietaires"] if x["id"] == fiche["gouvernance"]["syndic"]["coproprietaire_id"])
@@ -622,7 +623,7 @@ def generer_lettre(fiche: dict, rel: dict, compte: dict, a_echoir: list[dict], c
     if niveau < 3:
         h += [essentiel([("Montant à régler", euros(total), f"{len(rel['echeances'])} échéance(s)"),
                          ("À payer avant le", (jour + timedelta(days=delai)).strftime("%d/%m/%Y"), f"sous {delai} jours")],
-                        grand=grand), Spacer(1, 5 * mm)]
+                        grand=grand, papier=au_courrier), Spacer(1, 5 * mm)]
 
     # Détail : nature et montant de chaque provision (indispensable pour la mise en demeure)
     par_ech = {l["echeance"]: l for l in compte["impayes"]}
@@ -636,7 +637,7 @@ def generer_lettre(fiche: dict, rel: dict, compte: dict, a_echoir: list[dict], c
         largeurs = [26 * mm, 90 * mm, 29 * mm, 29 * mm]
     else:
         lignes, largeurs = _detail_med(rel, par_ech, S, total, euros, Paragraph, mm)
-    t = tableau(lignes, largeurs, aligner_droite_depuis=2, grand=grand)
+    t = tableau(lignes, largeurs, aligner_droite_depuis=2, grand=grand, papier=au_courrier)
     h += [t, Spacer(1, 5 * mm)]
     cs = adf["compte_separe"]
     payer = (f"<b>Pour payer</b> : virement à {cs['titulaire']}, IBAN {cs['iban']}, en indiquant la référence "
@@ -672,7 +673,8 @@ def generer_lettre(fiche: dict, rel: dict, compte: dict, a_echoir: list[dict], c
                 la.append([_fr(p["date"]), Paragraph(p["libelle"] + " : " + ", ".join(
                     f"{x['rubrique'].lower()} {euros(x['montant'])}" for x in p["detail"]), S["txt"]), euros(p["montant"])])
             la.append(["", "Total des provisions à échoir", euros(sum((p["montant"] for p in a_echoir), Decimal("0")))])
-            bloc += [Spacer(1, 3 * mm), tableau(la, [26 * mm, 112 * mm, 36 * mm], aligner_droite_depuis=2, grand=grand)]
+            bloc += [Spacer(1, 3 * mm), tableau(la, [26 * mm, 112 * mm, 36 * mm], aligner_droite_depuis=2, grand=grand,
+                                                     papier=au_courrier)]
         h += [KeepTogether(bloc), Spacer(1, 4 * mm),
               Paragraph("Si vous rencontrez des difficultés, contactez-moi sans attendre : un échéancier de paiement "
                         "peut encore être convenu. Vous pouvez aussi vous faire conseiller gratuitement par l'ADIL "

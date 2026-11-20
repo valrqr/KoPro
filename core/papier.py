@@ -180,7 +180,7 @@ def talon(fiche: dict, cid: str, montant: Decimal, reference: str, echeance: dat
     from reportlab.lib import colors
     from reportlab.lib.units import mm
     from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
-    from avis_appel import GRIS, euros
+    from avis_appel import GRIS, euros, polices_de
     c = _copro(fiche, cid)
     cpt = fiche["appels_de_fonds"]["compte_separe"]
     sid = fiche["gouvernance"]["syndic"]["coproprietaire_id"]
@@ -197,7 +197,7 @@ def talon(fiche: dict, cid: str, montant: Decimal, reference: str, echeance: dat
               colWidths=[174 * mm])
     t.setStyle(TableStyle([("LINEABOVE", (0, 1), (-1, 1), 1, GRIS, None, (3, 3)),
                            ("TOPPADDING", (0, 1), (-1, 1), 8), ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                           ("FONT", (0, 0), (-1, 0), "Helvetica", 7)]))
+                           ("FONT", (0, 0), (-1, 0), polices_de(st)[0], 7)]))
     return KeepTogether([Spacer(1, 4 * mm), t])
 
 
@@ -208,13 +208,13 @@ def generer_mandat_sepa(fiche: dict, cid: str, chemin: Path) -> Path:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    from avis_appel import FILET, styles, tampon, CanevasNumerote
+    from avis_appel import FILET, polices_de, styles, tampon, CanevasNumerote
 
     c = _copro(fiche, cid)
     cpt = fiche["appels_de_fonds"]["compte_separe"]
     if not cpt.get("ics"):
         raise PapierInvalide("Le syndicat n'a pas d'identifiant créancier SEPA (ics) : à demander à sa banque")
-    st = styles(bool(c.get("grands_caracteres")))
+    st = styles(bool(c.get("grands_caracteres")), canal(fiche, cid)["canal"] == "courrier")
     prefixe = fiche["appels_de_fonds"]["reference_virement"].split("-")[0]
     rum = (c.get("mandat_sepa") or {}).get("rum") or f"{prefixe}-{cid}"
     doc = SimpleDocTemplate(str(chemin), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
@@ -242,7 +242,7 @@ def generer_mandat_sepa(fiche: dict, cid: str, chemin: Path) -> Path:
                                 f"Signature :", st["txt"])],
     ]
     t = Table(blocs, colWidths=[40 * mm, 134 * mm])
-    t.setStyle(TableStyle([("FONT", (0, 0), (0, -1), "Helvetica-Bold", 12 if st is not None and st["txt"].fontSize > 12 else 9),
+    t.setStyle(TableStyle([("FONT", (0, 0), (0, -1), polices_de(st)[1], 12 if st is not None and st["txt"].fontSize > 12 else 9),
                            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("GRID", (0, 0), (-1, -1), 0.4, FILET),
                            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     h += [t, Spacer(1, 6 * mm),
@@ -270,7 +270,7 @@ def generer_bulletin(fiche: dict, dossier: dict, sondage: dict, cid: str, comp: 
     c = _copro(fiche, cid)
     if cid not in sondage["electeurs"]:
         raise PapierInvalide(f"{cid} n'est pas concerné par ce sondage (clé de répartition)")
-    st = styles(bool(c.get("grands_caracteres")))
+    st = styles(bool(c.get("grands_caracteres")), papier=True)      # un bulletin papier : Atkinson
     grand = bool(c.get("grands_caracteres"))
     clos = datetime.fromisoformat(sondage["clos_le"])
     sid = fiche["gouvernance"]["syndic"]["coproprietaire_id"]
@@ -302,7 +302,8 @@ def generer_bulletin(fiche: dict, dossier: dict, sondage: dict, cid: str, comp: 
         lignes.append([_case(), f"{did} · {d['entreprise']}", euros(d["montant_ttc"]),
                        euros(parts[did]) if did in parts else "—"])
     lignes += [[_case(), "Aucun de ces devis", "", ""], [_case(), "Sans avis", "", ""]]
-    h.append(tableau(lignes, [12 * mm, 92 * mm, 35 * mm, 35 * mm], aligner_droite_depuis=2, lignes_total=0, grand=grand))
+    h.append(tableau(lignes, [12 * mm, 92 * mm, 35 * mm, 35 * mm], aligner_droite_depuis=2, lignes_total=0, grand=grand,
+                     papier=True))
     h += [Spacer(1, 8 * mm),
           Paragraph("Date : ____ / ____ / ________ &nbsp;&nbsp;&nbsp; Signature :", st["txt"]), Spacer(1, 14 * mm),
           Paragraph("Le comparatif complet des devis est disponible sur demande auprès du syndic. Si vous avez aussi "

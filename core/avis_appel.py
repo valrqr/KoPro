@@ -54,6 +54,32 @@ def fort(texte: str) -> str:
     return f"<font color='{ORANGE_HTML}'><b>{texte}</b></font>"
 MARGE_HAUTE = 20 * mm                   # place du bandeau d'en-tête
 
+# Atkinson Hyperlegible (dessinée pour les malvoyants) : pour les documents adressés à
+# un copropriétaire qui a choisi le courrier. Les autres gardent Helvetica, intégrée aux PDF.
+POLICES = Path(__file__).resolve().parent / "ressources" / "polices"
+try:
+    from reportlab.lib.fonts import addMapping
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    pdfmetrics.registerFont(TTFont("Atkinson", str(POLICES / "AtkinsonHyperlegible-Regular.ttf")))
+    pdfmetrics.registerFont(TTFont("Atkinson-Bold", str(POLICES / "AtkinsonHyperlegible-Bold.ttf")))
+    for gras, italique, nom in ((0, 0, "Atkinson"), (1, 0, "Atkinson-Bold"), (0, 1, "Atkinson"), (1, 1, "Atkinson-Bold")):
+        addMapping("Atkinson", gras, italique, nom)          # <b> et <i> dans les paragraphes
+    ATKINSON = True
+except Exception:                                             # police absente : Helvetica partout
+    ATKINSON = False
+
+
+def polices(papier: bool = False) -> tuple[str, str]:
+    """(normale, grasse) : Atkinson pour un destinataire au courrier, Helvetica sinon."""
+    return ("Atkinson", "Atkinson-Bold") if papier and ATKINSON else ("Helvetica", "Helvetica-Bold")
+
+
+def polices_de(st: dict) -> tuple[str, str]:
+    """Les polices d'un jeu de styles (pour les blocs qui reçoivent seulement les styles)."""
+    return polices(st["txt"].fontName.startswith("Atkinson"))
+
+
 base = getSampleStyleSheet()
 S = {
     "titre": ParagraphStyle("titre", parent=base["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24,
@@ -66,9 +92,19 @@ S = {
 }
 
 
-def styles(grand: bool = False) -> dict:
+def styles(grand: bool = False, papier: bool = False) -> dict:
     """Styles de texte. grand=True : version « grands caractères » (14 pt pour le texte courant),
-    pour les copropriétaires qui l'ont demandée."""
+    pour les copropriétaires qui l'ont demandée. papier=True : police Atkinson Hyperlegible,
+    pour les documents adressés à un copropriétaire qui reçoit ses documents par courrier."""
+    st = _styles_taille(grand)
+    if not (papier and ATKINSON):
+        return st
+    n, g = polices(True)
+    return {k: ParagraphStyle(f"{v.name}_papier", parent=v, fontName=g if k == "titre" else n)
+            for k, v in st.items()}
+
+
+def _styles_taille(grand: bool) -> dict:
     if not grand:
         return S
     return {
@@ -162,15 +198,17 @@ class CanevasNumerote(rl_canvas.Canvas):
         super().save()
 
 
-def essentiel(chiffres: list[tuple[str, str, str]], grand: bool = False, largeur: float = 174 * mm):
+def essentiel(chiffres: list[tuple[str, str, str]], grand: bool = False, largeur: float = 174 * mm,
+              papier: bool = False):
     """Encadré « L'essentiel » : 2 à 4 chiffres clés en gros, en orange, chacun avec
     son libellé au-dessus et une précision en dessous. chiffres = [(libellé, valeur, précision)]."""
     n = len(chiffres)
-    lib = ParagraphStyle("ess_lib", fontName="Helvetica-Bold", fontSize=12 if grand else 8.5,
+    fn, fg = polices(papier)
+    lib = ParagraphStyle("ess_lib", fontName=fg, fontSize=12 if grand else 8.5,
                          leading=15 if grand else 11, textColor=GRIS)
-    val = ParagraphStyle("ess_val", fontName="Helvetica-Bold", fontSize=22 if grand else 17,
+    val = ParagraphStyle("ess_val", fontName=fg, fontSize=22 if grand else 17,
                          leading=27 if grand else 21, textColor=ORANGE)
-    note = ParagraphStyle("ess_note", fontName="Helvetica", fontSize=12 if grand else 8.5,
+    note = ParagraphStyle("ess_note", fontName=fn, fontSize=12 if grand else 8.5,
                           leading=15 if grand else 11, textColor=ENCRE)
     cellules = [[Paragraph(l.upper(), lib), Paragraph(v, val), Paragraph(p, note)] for l, v, p in chiffres]
     t = Table([cellules], colWidths=[largeur / n] * n)
@@ -183,12 +221,14 @@ def essentiel(chiffres: list[tuple[str, str, str]], grand: bool = False, largeur
 
 
 def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1, grand: bool = False,
-            serre: bool = False):
-    """serre=True : lignes plus rapprochées, pour les longues listes (même taille de texte)."""
+            serre: bool = False, papier: bool = False):
+    """serre=True : lignes plus rapprochées, pour les longues listes (même taille de texte).
+    papier=True : police Atkinson (destinataire au courrier)."""
+    fn, fg = polices(papier)
     t = Table(donnees, colWidths=largeurs, repeatRows=1)
     style = [
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 12 if grand else 9),
-        ("FONT", (0, 1), (-1, -1), "Helvetica", 13 if grand else 10),
+        ("FONT", (0, 0), (-1, 0), fg, 12 if grand else 9),
+        ("FONT", (0, 1), (-1, -1), fn, 13 if grand else 10),
         ("TEXTCOLOR", (0, 0), (-1, 0), GRIS),
         ("TEXTCOLOR", (0, 1), (-1, -1), ENCRE),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, ENCRE),
@@ -200,7 +240,7 @@ def tableau(donnees, largeurs, aligner_droite_depuis: int, lignes_total: int = 1
     ]
     if lignes_total:
         style += [
-            ("FONT", (0, -lignes_total), (-1, -1), "Helvetica-Bold", 14 if grand else 10.5),
+            ("FONT", (0, -lignes_total), (-1, -1), fg, 14 if grand else 10.5),
             ("LINEABOVE", (0, -lignes_total), (-1, -lignes_total), 0.8, ENCRE),
             ("BACKGROUND", (0, -lignes_total), (-1, -1), FOND),
         ]
@@ -238,8 +278,9 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
     cles = fiche["cles_repartition"]
     lots = sorted((l for l in fiche["lots"] if l["proprietaire"] == cid), key=lambda l: l["numero"])
     grand = bool(copro.get("grands_caracteres"))
-    st = styles(grand)
     canal_avis = papier.canal(fiche, cid, emission)["canal"]
+    au_courrier = canal_avis == "courrier"
+    st = styles(grand, au_courrier)
     paiement_mode = copro.get("paiement", "virement")
     # Le chèque est proposé à qui l'a choisi, et à tout copropriétaire qui reçoit ses documents par courrier
     cheque_possible = paiement_mode == "cheque" or (paiement_mode == "virement" and canal_avis == "courrier")
@@ -291,7 +332,7 @@ def generer_avis(fiche, cid, montants, trimestre, dossier, projet) -> tuple[Path
         largeurs = [11 * mm, 20 * mm, 78 * mm, 31 * mm, 34 * mm]
     else:
         largeurs = [12 * mm, 30 * mm, 66 * mm, 30 * mm, 36 * mm]
-    h.append(tableau(lignes, largeurs, aligner_droite_depuis=3, grand=grand))
+    h.append(tableau(lignes, largeurs, aligner_droite_depuis=3, grand=grand, papier=au_courrier))
     h.append(Spacer(1, 6 * mm))
 
     # « Ce que vous devez faire », en une phrase, selon le mode de paiement
