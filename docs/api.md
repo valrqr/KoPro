@@ -112,6 +112,15 @@ L'interface web du syndic est servie sous `/app` (voir [interface.md](interface.
 | GET | `/copros/{copro}/meubles-tourisme/affichage.pdf?au=` | Affiche pour les parties communes, sans nom ni numéro de lot |
 | GET | `/copros/{copro}/meubles-tourisme/resolution` | Projet de résolution d'interdiction (art. 26 d), si les conditions le permettent |
 
+## Règlement en clair
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/copros/{copro}/reglement` | Importe le règlement (PDF, champ `fichier`) et le découpe en articles |
+| POST | `/copros/{copro}/reglement/redaction` | Rédige la version en clair (Mistral), citations vérifiées |
+| GET | `/copros/{copro}/reglement` | Thèmes, règles, points écartés, date de validation |
+| GET | `/copros/{copro}/reglement-en-clair.pdf?usage=` | Le document ; `usage=true` : les règles de vie pour un locataire |
+
 ## Pack nouvel arrivant
 
 | Méthode | Route | Rôle |

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block contenu %}
+<p class="discret"><a href="/app/{{ copro }}/documents#reglement">Documents</a></p>
+<h1>Le règlement en clair</h1>
+<p class="chapeau">Le règlement de copropriété, rangé par thèmes et réécrit en langage courant. Chaque règle renvoie à son
+  article ; Mitoyen vérifie que la citation qui la justifie figure bien dans le texte. Vous relisez, puis validez.</p>
+
+{% if not r %}
+<form method="post" action="/app/{{ copro }}/reglement/import" enctype="multipart/form-data" class="formulaire" style="display:grid;gap:.9rem;max-width:40rem">
+  <label>Le règlement de copropriété, en PDF <input type="file" name="fichier" accept="application/pdf" required></label>
+  <p class="discret" style="margin:0">Il faut un PDF dont le texte se sélectionne (pas une photocopie scannée). Les modificatifs
+    éventuels se fusionnent avant, dans un seul PDF.</p>
+  <div><button type="submit">Importer</button></div>
+</form>
+{% else %}
+
+<div class="colonnes">
+<section>
+{% for p in points %}<div class="message"><span class="erreur">Écarté :</span> {{ p }}</div>{% endfor %}
+
+{% if not r.themes %}
+<div class="vide">{{ r.articles|length }} articles importés depuis « {{ r.source }} ».
+  {% if ia %}<form method="post" action="/app/{{ copro }}/reglement/redaction" style="margin-top:.8rem"><button type="submit">Rédiger la version en clair</button></form>
+  {% else %}<br>La rédaction utilise l'IA (Mistral) : ajoutez la clé <code>MISTRAL_API_KEY</code> dans le fichier <code>.env</code>.{% endif %}
+</div>
+{% else %}
+<form method="post" action="/app/{{ copro }}/reglement" style="display:grid;gap:1.4rem">
+  <p class="discret" style="margin:0">Une règle par ligne, terminée par ses articles entre parenthèses : <code>- Les chiens sont tenus en laisse dans les parties communes. (art. 12)</code></p>
+  {% for cle, titre in themes.items() %}
+  <label><strong>{{ titre }}</strong>
+    <textarea name="t_{{ cle }}" rows="{{ [2, (textes.get(cle, '').count('\n') + 2)]|max }}" style="font:inherit;line-height:1.45"
+      placeholder="Rien dans le règlement sur ce thème">{{ textes.get(cle, "") }}</textarea></label>
+  {% endfor %}
+  <div class="actions">
+    <button type="submit" name="action" value="valider">{{ "Valider à nouveau" if r.valide_le else "Valider la version en clair" }}</button>
+    <button type="submit" name="action" value="enregistrer" class="secondaire">Enregistrer sans valider</button>
+  </div>
+</form>
+{% endif %}
+
+<h2>Si une règle n'est pas respectée</h2>
+<p class="discret" style="margin-top:-.4rem">Ce rappel, identique pour toutes les copropriétés, termine le document.</p>
+<ul>{% for t, txt in si_non_respect %}<li><strong>{{ t }}.</strong> {{ txt }}</li>{% endfor %}</ul>
+</section>
+
+<aside>
+  <div class="chiffres">
+    <div class="chiffre neutre"><span>Articles du règlement</span><b>{{ r.articles|length }}</b><small>importés le {{ r.importe_le|date_fr }}</small></div>
+    <div class="chiffre neutre"><span>Règles en clair</span><b>{{ r.themes.values()|map("length")|sum }}</b><small>dans {{ r.themes|length }} thèmes</small></div>
+    <div class="chiffre{{ ' neutre' if r.valide_le }}"><span>Statut</span><b>{{ "Validée" if r.valide_le else "À valider" }}</b>
+      <small>{% if r.valide_le %}le {{ r.valide_le|date_fr }}, jointe aux packs nouvel arrivant{% else %}relisez chaque thème{% endif %}</small></div>
+  </div>
+  {% if r.themes %}
+  <h3>Documents</h3>
+  <div style="display:grid;gap:.5rem">
+    <a class="bouton secondaire" href="/copros/{{ copro }}/reglement-en-clair.pdf" target="_blank">Le règlement en clair</a>
+    <a class="bouton secondaire" href="/copros/{{ copro }}/reglement-en-clair.pdf?usage=true" target="_blank">Extraits pour un locataire</a>
+  </div>
+  {% if ia %}<form method="post" action="/app/{{ copro }}/reglement/redaction" style="margin-top:1rem"><button class="secondaire" type="submit">Refaire la rédaction</button></form>{% endif %}
+  {% endif %}
+  <details class="formulaire" style="margin-top:1rem"><summary>Les {{ r.articles|length }} articles</summary>
+    <ol style="padding-left:1.1rem;margin:.6rem 0 0">{% for a in r.articles %}<li value="{{ a.num if a.num.isdigit() else loop.index }}">{{ a.titre or a.texte[:60] }}</li>{% endfor %}</ol>
+  </details>
+  <details class="formulaire" style="margin-top:1rem"><summary>Remplacer le règlement</summary>
+    <form method="post" action="/app/{{ copro }}/reglement/import" enctype="multipart/form-data" style="display:grid;gap:.6rem;margin-top:.6rem">
+      <input type="file" name="fichier" accept="application/pdf" required>
+      <p class="discret" style="margin:0">Après un modificatif voté en AG. La version en clair sera à refaire.</p>
+      <button type="submit" class="secondaire">Importer</button>
+    </form>
+  </details>
+</aside>
+</div>
+{% endif %}
+{% endblock %}

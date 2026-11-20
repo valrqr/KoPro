@@ -102,13 +102,16 @@ def pack_proprietaire(fiche: dict, numeros: list[int], nom: str, chemin: Path, r
     conseil = [x["nom"] for x in fiche["coproprietaires"] if x["id"] in gouv.get("conseil_syndical", [])]
     ag = _prochaine_ag(racine, copro, jour)
     lots_txt = ", ".join(f"lot {l['numero']} ({l['desc'] or l['type']})" for l in pre["lots"])
+    import reglement
+    regl = reglement.valide(racine, copro) if racine and copro else None
     a_echoir = [e for e in pre["echeancier"] if e["statut"] == "à échoir"]
 
     h = [Paragraph(f"Bienvenue à la {c['nom']}", S["titre"]),
          Paragraph(f"{nom} · {lots_txt}", S["sous"]), Spacer(1, 4 * mm),
          Paragraph(f"Vous voici copropriétaire. La copropriété est gérée par un syndic {mode} : un copropriétaire, "
                    f"{syndic['nom']}, élu par l'assemblée générale et assisté d'un conseil syndical. Ce guide réunit "
-                   "ce qu'il faut savoir pour bien démarrer.", S["txt"]), Spacer(1, 5 * mm)]
+                   "ce qu'il faut savoir pour bien démarrer"
+                   + (" ; le règlement de copropriété en clair le suit." if regl else "."), S["txt"]), Spacer(1, 5 * mm)]
     chiffres = [("Vos charges par an", euros(pre["total_annuel_lots"]),
                  f"en {len(pre['echeancier'])} appels, budget {pre['exercice']}")]
     if a_echoir:
@@ -199,13 +202,15 @@ def pack_proprietaire(fiche: dict, numeros: list[int], nom: str, chemin: Path, r
     # Trois documents, chacun avec sa numérotation, réunis dans un seul PDF :
     # le guide, la fiche synthétique, puis le bulletin, à détacher et rendre au syndic.
     from pypdf import PdfReader
-    tmp = [chemin.with_suffix(f".{x}.pdf") for x in ("guide", "fiche", "bulletin")]
+    tmp = [chemin.with_suffix(f".{x}.pdf") for x in ("guide", "fiche") + (("reglement",) if regl else ()) + ("bulletin",)]
     pied = f"{c['nom']} – bienvenue – {nom}"
     _doc(tmp[0], "Bienvenue").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied),
                                     onLaterPages=tampon(False, pied))
     vente.generer_fiche_synthetique(fiche, tmp[1], jour)
+    if regl:
+        reglement.generer_pdf(fiche, regl, tmp[2], grand=grand)
     pied_b = f"{c['nom']} – bulletin de choix – {nom}"
-    _doc(tmp[2], "Bulletin de choix").build(b, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied_b),
+    _doc(tmp[-1], "Bulletin de choix").build(b, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied_b),
                                             onLaterPages=tampon(False, pied_b))
     w = PdfWriter()
     for t in tmp:
@@ -281,6 +286,22 @@ def pack_locataire(fiche: dict, numeros: list[int], chemin: Path, racine: Path |
                   "privatives et communes, qu'il joint à ce document.", S["petit"])]),
           Spacer(1, 4 * mm), Paragraph(AVERTISSEMENT, S["petit"])]
     pied = f"{c['nom']} – bienvenue – document remis par le bailleur"
-    _doc(chemin, "Bienvenue").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied),
-                                    onLaterPages=tampon(False, pied))
+    import reglement
+    regl = reglement.valide(racine, copro) if racine and copro else None
+    cible = chemin.with_suffix(".guide.pdf") if regl else chemin
+    _doc(cible, "Bienvenue").build(h, canvasmaker=CanevasNumerote, onFirstPage=tampon(False, pied),
+                                   onLaterPages=tampon(False, pied))
+    if regl:     # les règles de vie en clair, à la suite (les extraits officiels restent à joindre)
+        from pypdf import PdfReader, PdfWriter
+        extraits = chemin.with_suffix(".reglement.pdf")
+        reglement.generer_pdf(fiche, regl, extraits, reglement.USAGE_LOCATAIRE, grand=grand)
+        w = PdfWriter()
+        for t in (cible, extraits):
+            for pg in PdfReader(str(t)).pages:
+                w.add_page(pg)
+        w.add_metadata({"/Title": f"Bienvenue à la {c['nom']}"})
+        with open(chemin, "wb") as fh:
+            w.write(fh)
+        cible.unlink()
+        extraits.unlink()
     return chemin

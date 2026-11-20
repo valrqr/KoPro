@@ -6,7 +6,7 @@ Un nouvel arrivant dans l'immeuble ne sait pas qui gère, ce qu'il paiera, ni co
 
 ## Pour un nouveau propriétaire
 
-Il devient membre du syndicat. Un seul PDF, en trois documents :
+Il devient membre du syndicat. Un seul PDF, en trois documents, quatre si le [règlement en clair](reglement.md) a été validé (il se place avant le bulletin) :
 
 | Document | Contenu |
 |---|---|
@@ -24,7 +24,8 @@ Il n'a aucun lien juridique avec le syndicat : le pack est **remis par son baill
 
 | Mitoyen fournit | Le bailleur ajoute |
 |---|---|
-| Qui contacter : le bailleur pour le logement, le syndic pour les parties communes | Les extraits du règlement de copropriété |
+| Qui contacter : le bailleur pour le logement, le syndic pour les parties communes | Les extraits du règlement de copropriété (le texte officiel) |
+| Les règles de vie en clair, si le [règlement en clair](reglement.md) a été validé | |
 | La vie de l'immeuble | |
 | **La quote-part du logement dans chaque catégorie de charges**, calculée à partir des tantièmes | |
 

@@ -1293,11 +1293,98 @@ def test_interface_points_d_extension():
         return [{"texte": "Tâche ajoutée par un module", "detail": "Ajoutée par une extension", "lien": None,
                  "niveau": "important"}]
     try:
-        interface.ajouter_module(rubriques=[("essai", "/essai", "Rubrique ajoutée")], taches=[tache])
+        interface.ajouter_module(rubriques=[("essai", "/essai", "Rubrique ajoutée")], taches=[tache],
+                                 liens_ag=[("Lien de séance ajouté", "/essai")])
         t = n.get("/app/mimosas").text
         assert "Rubrique ajoutée" in t and "Tâche ajoutée par un module" in t
         assert t.index("Plan de travaux") < t.index("Rubrique ajoutée") < t.index("Copropriétaires")
+        n.post("/app/mimosas/ag", data={"date_ag": "2027-12-04", "heure": "18h", "lieu": "Salle commune",
+                                        "odj_type": "true"})
+        assert "Lien de séance ajouté" in n.get("/app/mimosas/ag/2027-12-04").text
     finally:
+        interface.LIENS_AG_EXTENSIONS.clear()
         interface.RUBRIQUES_EXTENSIONS.clear()
         interface.TACHES_EXTENSIONS.clear()
     assert "Rubrique ajoutée" not in n.get("/app/mimosas").text
+
+
+# --------------------------------------------------------------------------- #
+# Règlement de copropriété en clair
+# --------------------------------------------------------------------------- #
+import reglement  # noqa: E402
+
+REGLEMENT_PDF = (Path(__file__).resolve().parent.parent / "exemples" / "reglement" / "reglement_mimosas.pdf").read_bytes()
+
+
+class IAReglement:
+    def completer(self, messages):
+        assert "N'invente rien" in messages[0]["content"] and "ARTICLE 12" in messages[1]["content"]
+        return _json.dumps({"themes": {
+            "animaux": [{"regle": "Les animaux sont admis s'ils ne causent aucune gêne.", "articles": ["12"],
+                         "citation": "La détention d'animaux domestiques est tolérée"},
+                        {"regle": "Les chiens sont tenus en laisse dans les parties communes.", "articles": ["12"],
+                         "citation": "Les chiens doivent être tenus en laisse"}],
+            "nuisances": [{"regle": "Travaux bruyants en semaine de 8 h à 19 h, le samedi matin.", "articles": ["8"],
+                           "citation": "du lundi au vendredi de 8 heures à 19 heures"},
+                          {"regle": "Les fêtes sont interdites.", "articles": ["11"],
+                           "citation": "toute fête est formellement interdite"}],                 # citation inventée
+            "location": [{"regle": "Location interdite.", "articles": ["42"], "citation": "interdit"}],  # article inexistant
+            "inconnu": [{"regle": "x", "articles": ["1"], "citation": "objet"}]}})
+
+
+def test_reglement_en_clair(monkeypatch):
+    assert c.post("/copros/mimosas/reglement", headers=H,
+                  files={"fichier": ("r.pdf", b"pas un pdf", "application/pdf")}).status_code == 422
+    r = c.post("/copros/mimosas/reglement", headers=H, files={"fichier": ("r.pdf", REGLEMENT_PDF, "application/pdf")})
+    assert r.status_code == 201 and r.json()["articles"] == 16
+    # Sans clé Mistral : 503, rien d'inventé
+    monkeypatch.setattr(resume_ia, "fournisseur", lambda: resume_ia.Mistral(cle=""))
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    assert c.post("/copros/mimosas/reglement/redaction", headers=H).status_code == 503
+    monkeypatch.setattr(resume_ia, "fournisseur", lambda: IAReglement())
+    d = c.post("/copros/mimosas/reglement/redaction", headers=H).json()
+    assert [x["regle"] for x in d["themes"]["animaux"]] == ["Les animaux sont admis s'ils ne causent aucune gêne.",
+                                                            "Les chiens sont tenus en laisse dans les parties communes."]
+    assert len(d["themes"]["nuisances"]) == 1 and "location" not in d["themes"] and "inconnu" not in d["themes"]
+    assert any("citation ne figure pas" in p for p in d["points_a_verifier"])
+    assert any("42" in p and "introuvable" in p for p in d["points_a_verifier"])
+    # Relecture par le syndic, dans l'interface : une ligne sans article est refusée
+    n = _navigateur()
+    n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
+    page = n.get("/app/mimosas/reglement").text
+    assert "Les chiens sont tenus en laisse dans les parties communes. (art. 12)" in page
+    r = n.post("/app/mimosas/reglement", data={"t_animaux": "- Les chats aussi.", "action": "enregistrer"})
+    assert "terminez la ligne par les articles" in r.text
+    r = n.post("/app/mimosas/reglement", data={"t_animaux": "- Pas de chien sans laisse. (art. 99)"})
+    assert "Article 99 absent" in r.text
+    r = n.post("/app/mimosas/reglement", data={
+        "t_animaux": "- Les animaux sont admis s'ils ne causent aucune gêne. (art. 12)\n"
+                     "- Les chiens restent en laisse dans le hall et le jardin. (art. 12)",
+        "t_parties_communes": "- Rien ne reste dans le hall : vélos et poussettes vont au local prévu. (art. 5)",
+        "action": "valider"})
+    assert "Version validée" in r.text
+    v = c.get("/copros/mimosas/reglement", headers=H).json()
+    assert v["valide_le"] and v["themes"]["animaux"][0]["citation"]          # la citation d'origine est gardée
+    assert v["themes"]["animaux"][1]["citation"] == ""                        # règle réécrite : plus de citation IA
+    assert "Le règlement en clair" in n.get("/app/mimosas/documents").text
+    # Les documents
+    from pypdf import PdfReader
+    complet = c.get("/copros/mimosas/reglement-en-clair.pdf", headers=H)
+    texte = "".join(p.extract_text() for p in PdfReader(io.BytesIO(complet.content)).pages)
+    assert "Animaux" in texte and "(art. 12)" in texte and "fait foi" in texte and "Si une règle" in texte
+    usage = c.get("/copros/mimosas/reglement-en-clair.pdf", headers=H, params={"usage": "true"})
+    assert "Charges" not in "".join(p.extract_text() for p in PdfReader(io.BytesIO(usage.content)).pages)
+    # Le pack locataire s'enrichit des règles de vie en clair
+    loc = c.get("/copros/mimosas/bienvenue/locataire.pdf", headers=H, params={"lots": [9]})
+    assert loc.status_code == 200
+    assert "Le règlement de copropriété en clair" in "".join(
+        p.extract_text() for p in PdfReader(io.BytesIO(loc.content)).pages)
+
+
+def test_reglement_decoupage():
+    t = "Préambule\nARTICLE 1 – Objet\nTexte un.\nArticle 2. Destination\nTexte deux, voir\nArticle 1 ci-dessus.\nArt. 3 bis : Animaux\nTrois."
+    a = reglement.decouper(t)
+    assert [x["num"] for x in a] == ["1", "2", "3 bis"]
+    assert a[1]["titre"] == "Destination" and "Article 1 ci-dessus." in a[1]["texte"]
+    assert a[2]["titre"] == "Animaux" and a[2]["texte"] == "Trois."
+    assert reglement._normaliser("Les  chiens\n doivent") == "les chiens doivent"

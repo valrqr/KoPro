@@ -112,6 +112,7 @@ import vente  # noqa: E402
 import banque  # noqa: E402
 import impayes  # noqa: E402
 import rappel_ag  # noqa: E402
+import reglement  # noqa: E402
 import meubles_tourisme  # noqa: E402
 import nouvel_arrivant  # noqa: E402
 import resume_ia  # noqa: E402
@@ -1311,6 +1312,56 @@ def comparatif_electeur(copro: str = Copro, dossier_id: str = Dossier, sid: str 
     fiche = fiche_de(copro)
     sortie = travaux.generer_pdf(fiche, travaux.synthese(fiche, d), chemin / "comparatif.pdf")
     return FileResponse(sortie, media_type="application/pdf", filename=f"comparatif_{dossier_id}.pdf")
+
+# --------------------------------------------------------------------------- #
+# Règlement de copropriété en clair
+# --------------------------------------------------------------------------- #
+@app.post("/copros/{copro}/reglement", status_code=201, dependencies=[Depends(verifier_cle)])
+async def importer_reglement(copro: str = Copro,
+                             fichier: UploadFile = File(..., description="Le règlement en PDF (texte sélectionnable)")) -> dict:
+    fiche_de(copro)
+    try:
+        r = reglement.importer(DOSSIER_DATA, copro, await fichier.read(reglement.TAILLE_MAX_PDF + 1),
+                               fichier.filename or "reglement.pdf")
+    except reglement.ReglementInvalide as e:
+        raise HTTPException(422, str(e))
+    return {"articles": len(r["articles"]), "source": r["source"]}
+
+
+@app.post("/copros/{copro}/reglement/redaction", dependencies=[Depends(verifier_cle)])
+def rediger_reglement(copro: str = Copro) -> dict:
+    fiche_de(copro)
+    r = reglement.charger(DOSSIER_DATA, copro)
+    if not r:
+        raise HTTPException(404, "Aucun règlement importé")
+    try:
+        r = reglement.rediger(DOSSIER_DATA, copro, r)
+    except resume_ia.IAIndisponible as e:
+        raise HTTPException(503, str(e))
+    return {"themes": r["themes"], "points_a_verifier": r["points_a_verifier"]}
+
+
+@app.get("/copros/{copro}/reglement", dependencies=[Depends(verifier_cle)])
+def voir_reglement(copro: str = Copro) -> dict:
+    fiche_de(copro)
+    r = reglement.charger(DOSSIER_DATA, copro)
+    if not r:
+        raise HTTPException(404, "Aucun règlement importé")
+    return {**{k: r[k] for k in ("source", "importe_le", "themes", "redaction", "points_a_verifier", "valide_le")},
+            "articles": len(r["articles"])}
+
+
+@app.get("/copros/{copro}/reglement-en-clair.pdf", dependencies=[Depends(verifier_cle)])
+def pdf_reglement(copro: str = Copro, usage: bool = Query(False, description="Seulement ce qui concerne l'occupant")) -> FileResponse:
+    fiche = fiche_de(copro)
+    r = reglement.charger(DOSSIER_DATA, copro)
+    if not r or not r.get("themes"):
+        raise HTTPException(404, "Pas encore de version en clair")
+    sortie = DOSSIER_SORTIE / copro / "reglement"
+    chemin = reglement.generer_pdf(fiche, r, sortie / ("reglement_en_clair_usage.pdf" if usage else "reglement_en_clair.pdf"),
+                                   reglement.USAGE_LOCATAIRE if usage else None)
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
 
 
 # --------------------------------------------------------------------------- #

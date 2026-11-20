@@ -39,6 +39,7 @@
     </div>
     <h3>Documents</h3>
     <div style="display:grid;gap:.5rem">
+      {% for libelle, chemin in liens_ag_extensions %}<a class="bouton" href="/app/{{ copro }}/ag/{{ a.id }}{{ chemin }}">{{ libelle }}</a>{% endfor %}
       <a class="bouton secondaire" href="/copros/{{ copro }}/ag/{{ a.id }}/agenda.ics">Fichier pour l'agenda</a>
       <a class="bouton secondaire" href="/copros/{{ copro }}/ag/{{ a.id }}/feuille-presence.pdf" target="_blank">Feuille de présence</a>
       {% if a.depouillement %}<a class="bouton" href="/copros/{{ copro }}/ag/{{ a.id }}/pv.pdf" target="_blank">Procès-verbal</a>{% endif %}

@@ -16,6 +16,15 @@
   {% if fiche.plan_travaux %}<a class="bouton secondaire" href="/copros/{{ copro }}/plan.pdf" target="_blank">Plan de travaux</a>{% endif %}
 </div>
 
+<h2 id="reglement">Le règlement de copropriété en clair</h2>
+<p style="margin-top:0">{% if reglement and reglement.valide_le %}Version en clair validée le {{ reglement.valide_le|date_fr }} : elle est jointe aux packs nouvel arrivant.
+  {% elif reglement %}Règlement importé ({{ reglement.articles|length }} articles) : version en clair à rédiger ou à valider.
+  {% else %}Le règlement, rangé par thèmes en langage courant, chaque règle renvoyant à son article.{% endif %}</p>
+<div class="actions">
+  <a class="bouton{{ ' secondaire' if reglement and reglement.valide_le }}" href="/app/{{ copro }}/reglement">{{ "Relire la version en clair" if reglement else "Importer le règlement" }}</a>
+  {% if reglement and reglement.valide_le %}<a class="bouton secondaire" href="/copros/{{ copro }}/reglement-en-clair.pdf" target="_blank">Le règlement en clair</a>{% endif %}
+</div>
+
 <h2>Accueillir un nouvel arrivant</h2>
 <div class="ligne" style="align-items:start">
   <form class="formulaire" method="get" action="/copros/{{ copro }}/bienvenue/proprietaire.pdf" target="_blank" style="flex:1 1 20rem">

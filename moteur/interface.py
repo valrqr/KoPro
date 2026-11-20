@@ -68,19 +68,22 @@ templates.env.filters.update(euros=euros, euros_rond=euros_rond, date_fr=date_fr
 # --------------------------------------------------------------------------- #
 RUBRIQUES_EXTENSIONS: list[tuple[str, str, str]] = []   # (onglet, chemin sous /app/<copro>, libellé)
 TACHES_EXTENSIONS: list = []                              # fonctions (copro, fiche, jour) -> liste de tâches
+LIENS_AG_EXTENSIONS: list[tuple[str, str]] = []           # (libellé, chemin sous /app/<copro>/ag/<id>)
 
 
-def ajouter_module(rubriques=(), taches=(), gabarits: Path | None = None) -> None:
+def ajouter_module(rubriques=(), taches=(), gabarits: Path | None = None, liens_ag=()) -> None:
     """Un module complémentaire ajoute ses rubriques, ses tâches du tableau de bord et ses gabarits.
     Ses gabarits passent avant ceux du moteur, mais ne doivent pas en reprendre les noms."""
     from jinja2 import ChoiceLoader, FileSystemLoader
     RUBRIQUES_EXTENSIONS.extend(r for r in rubriques if r not in RUBRIQUES_EXTENSIONS)
     TACHES_EXTENSIONS.extend(t for t in taches if t not in TACHES_EXTENSIONS)
+    LIENS_AG_EXTENSIONS.extend(l for l in liens_ag if l not in LIENS_AG_EXTENSIONS)
     if gabarits is not None:
         templates.env.loader = ChoiceLoader([FileSystemLoader(str(gabarits)), templates.env.loader])
 
 
 templates.env.globals["rubriques_extensions"] = RUBRIQUES_EXTENSIONS
+templates.env.globals["liens_ag_extensions"] = LIENS_AG_EXTENSIONS
 
 
 def aujourdhui(request: Request) -> date:
@@ -599,6 +602,64 @@ def plan_suivre_ligne(request: Request, copro: str, ligne: str, statut: str = Fo
 
 
 # --------------------------------------------------------------------------- #
+# Règlement de copropriété en clair
+# --------------------------------------------------------------------------- #
+@routeur.get("/{copro}/reglement", response_class=HTMLResponse)
+def reglement_page(request: Request, copro: str):
+    exiger(request, copro)
+    r = A.reglement.charger(A.DOSSIER_DATA, copro)
+    textes = {k: A.reglement.en_texte(v) for k, v in (r or {}).get("themes", {}).items()}
+    return page(request, "reglement.html", copro, onglet="documents", r=r, themes=A.reglement.THEMES, textes=textes,
+                ia=bool(os.getenv("MISTRAL_API_KEY")), si_non_respect=A.reglement.SI_NON_RESPECT,
+                points=(r or {}).get("points_a_verifier", []))
+
+
+@routeur.post("/{copro}/reglement/import")
+async def reglement_import(request: Request, copro: str, fichier: UploadFile = File(...)):
+    exiger(request, copro)
+    try:
+        r = A.reglement.importer(A.DOSSIER_DATA, copro, await fichier.read(A.reglement.TAILLE_MAX_PDF + 1),
+                                 fichier.filename or "reglement.pdf", aujourdhui(request))
+    except A.reglement.ReglementInvalide as e:
+        return retour(f"/app/{copro}/reglement", f"Règlement non importé : {e}", request)
+    return retour(f"/app/{copro}/reglement", f"{len(r['articles'])} articles trouvés. Lancez la rédaction de la "
+                  "version en clair.", request)
+
+
+@routeur.post("/{copro}/reglement/redaction")
+def reglement_redaction(request: Request, copro: str):
+    exiger(request, copro)
+    r = A.reglement.charger(A.DOSSIER_DATA, copro)
+    if not r:
+        return retour(f"/app/{copro}/reglement", "Importez d'abord le règlement.", request)
+    try:
+        r = A.reglement.rediger(A.DOSSIER_DATA, copro, r)
+    except A.resume_ia.IAIndisponible as e:
+        return retour(f"/app/{copro}/reglement", f"Rédaction impossible : {e}", request)
+    n = sum(len(v) for v in r["themes"].values())
+    return retour(f"/app/{copro}/reglement", f"{n} règles rédigées et vérifiées contre le texte. Relisez chaque "
+                  "thème avant de valider.", request)
+
+
+@routeur.post("/{copro}/reglement")
+async def reglement_enregistrer(request: Request, copro: str):
+    exiger(request, copro)
+    form = await request.form()
+    r = A.reglement.charger(A.DOSSIER_DATA, copro)
+    if not r:
+        raise HTTPException(404)
+    try:
+        A.reglement.modifier(A.DOSSIER_DATA, copro, r, {k: str(form.get(f"t_{k}", "")) for k in A.reglement.THEMES
+                                                         if f"t_{k}" in form})
+        if form.get("action") == "valider":
+            A.reglement.valider(A.DOSSIER_DATA, copro, r, aujourdhui(request))
+    except A.reglement.ReglementInvalide as e:
+        return retour(f"/app/{copro}/reglement", f"Non enregistré : {e}", request)
+    return retour(f"/app/{copro}/reglement", "Version validée : elle rejoint les packs nouvel arrivant."
+                  if form.get("action") == "valider" else "Enregistré.", request)
+
+
+# --------------------------------------------------------------------------- #
 # Documents
 # --------------------------------------------------------------------------- #
 @routeur.get("/{copro}/documents", response_class=HTMLResponse)
@@ -615,6 +676,7 @@ def documents_page(request: Request, copro: str):
                for cid, ls in sorted(par_proprio.items(), key=lambda x: noms[x[0]])]
     logements = [l for l in fiche["lots"] if l["type"] not in ("cave", "parking")]
     return page(request, "documents.html", copro, groupes=groupes, logements=logements,
+                reglement=A.reglement.charger(A.DOSSIER_DATA, copro),
                 telechargement=request.session.pop("telechargement", None),
                 mt=reg, mt_actives=len(A.meubles_tourisme.actives(reg, jour)),
                 eligibilite=A.meubles_tourisme.eligibilite(fiche))
