@@ -7,6 +7,7 @@
   <link rel="icon" href="/statique/icone_64.png">
   <link rel="stylesheet" href="/statique/app.css">
   <script src="/statique/htmx.min.js" defer></script>
+  {% block tete %}{% endblock %}
 </head>
 <body>
 <div class="ossature">
@@ -19,6 +20,7 @@
                           ("appels", "/appels", "Appels de fonds"), ("ag", "/ag", "Assemblées générales"),
                           ("travaux", "/travaux", "Travaux"), ("plan", "/plan", "Plan de travaux"),
                           ("coproprietaires", "/coproprietaires", "Copropriétaires"), ("documents", "/documents", "Documents")] %}
+      {% set rubriques = rubriques[:6] + rubriques_extensions + rubriques[6:] %}
       {% for cle, chemin, libelle in rubriques %}
       <a href="/app/{{ copro }}{{ chemin }}" {% if onglet == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
       {% endfor %}

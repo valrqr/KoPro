@@ -22,7 +22,7 @@
     {% endif %}
   </section>
   <aside class="chiffres" aria-label="Chiffres clés">
-    <div class="chiffre"><span>Impayés</span>
+    <div class="chiffre{{ ' neutre' if not imp or not imp.total_impayes|float }}"><span>Impayés</span>
       {% if imp %}<b>{{ imp.total_impayes|euros_rond }}</b>
         <small>{{ imp.nb_debiteurs }} copropriétaire{{ "s" if imp.nb_debiteurs > 1 }} en retard{% if imp.dont_a_confirmer|float > 0 %}, dont {{ imp.dont_a_confirmer|euros_rond }} peut-être déjà payés{% endif %}</small>
       {% else %}<b>—</b><small><a href="/app/{{ copro }}/impayes">Importez un relevé</a> pour les connaître.</small>{% endif %}

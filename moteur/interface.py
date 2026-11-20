@@ -63,6 +63,26 @@ def date_fr(d, longue: bool = False) -> str:
 templates.env.filters.update(euros=euros, euros_rond=euros_rond, date_fr=date_fr)
 
 
+# --------------------------------------------------------------------------- #
+# Points d'extension, pour les modules complémentaires
+# --------------------------------------------------------------------------- #
+RUBRIQUES_EXTENSIONS: list[tuple[str, str, str]] = []   # (onglet, chemin sous /app/<copro>, libellé)
+TACHES_EXTENSIONS: list = []                              # fonctions (copro, fiche, jour) -> liste de tâches
+
+
+def ajouter_module(rubriques=(), taches=(), gabarits: Path | None = None) -> None:
+    """Un module complémentaire ajoute ses rubriques, ses tâches du tableau de bord et ses gabarits.
+    Ses gabarits passent avant ceux du moteur, mais ne doivent pas en reprendre les noms."""
+    from jinja2 import ChoiceLoader, FileSystemLoader
+    RUBRIQUES_EXTENSIONS.extend(r for r in rubriques if r not in RUBRIQUES_EXTENSIONS)
+    TACHES_EXTENSIONS.extend(t for t in taches if t not in TACHES_EXTENSIONS)
+    if gabarits is not None:
+        templates.env.loader = ChoiceLoader([FileSystemLoader(str(gabarits)), templates.env.loader])
+
+
+templates.env.globals["rubriques_extensions"] = RUBRIQUES_EXTENSIONS
+
+
 def aujourdhui(request: Request) -> date:
     """La date du jour, ou celle de la démonstration (?au=2027-05-20, gardée en session)."""
     au = request.query_params.get("au")
@@ -212,6 +232,8 @@ def tableau_de_bord(request: Request, copro: str):
         if al["niveau"] in ("urgent", "important") or len(a_faire) < 6:
             a_faire.append({"texte": al["titre"], "detail": al["message"],
                             "date": al.get("date"), "lien": None, "niveau": al["niveau"]})
+    for ext in TACHES_EXTENSIONS:
+        a_faire.extend(ext(copro, fiche, jour))
     ordre = {"urgent": 0, "important": 1}
     a_faire.sort(key=lambda x: ordre.get(x["niveau"], 2))
     solde_ft = (fiche["fonds_travaux"].get("solde") or {}).get("montant")

@@ -1282,3 +1282,22 @@ def test_interface_travaux_et_plan():
     assert "Estimation du plan" in n.get(r.headers["location"]).text
     r = n.post("/app/mimosas/plan/lignes/L06/dossier")
     assert "Dossier non ouvert" in r.text
+
+
+def test_interface_points_d_extension():
+    from moteur import interface
+    n = _navigateur()
+    n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
+
+    def tache(copro, fiche, jour):
+        return [{"texte": "Tâche ajoutée par un module", "detail": "Ajoutée par une extension", "lien": None,
+                 "niveau": "important"}]
+    try:
+        interface.ajouter_module(rubriques=[("essai", "/essai", "Rubrique ajoutée")], taches=[tache])
+        t = n.get("/app/mimosas").text
+        assert "Rubrique ajoutée" in t and "Tâche ajoutée par un module" in t
+        assert t.index("Plan de travaux") < t.index("Rubrique ajoutée") < t.index("Copropriétaires")
+    finally:
+        interface.RUBRIQUES_EXTENSIONS.clear()
+        interface.TACHES_EXTENSIONS.clear()
+    assert "Rubrique ajoutée" not in n.get("/app/mimosas").text

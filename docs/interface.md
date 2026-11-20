@@ -41,6 +41,10 @@ Le moteur sert aussi une interface web, à l'adresse `/app`. Pas d'application �
 
 La connexion ouvre une session signée de 8 heures. Elle donne accès aux mêmes routes que la clé d'API, ce qui permet d'ouvrir les PDF depuis l'interface. Le cookie est en `SameSite=Lax` : un formulaire posté depuis un autre site n'emporte pas la session.
 
+## Modules complémentaires
+
+Un module extérieur au moteur peut s'y brancher sans le modifier : `interface.ajouter_module(rubriques=…, taches=…, gabarits=…)` ajoute des rubriques à la barre latérale, des tâches à la liste « à faire » du tableau de bord et un dossier de gabarits ; un gabarit qui étend `base.html` peut charger ses styles dans le bloc `tete`. Ses routes s'ajoutent à l'application FastAPI (`app.include_router`).
+
 ## Essayer
 
 ```bash
