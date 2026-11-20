@@ -1,0 +1,43 @@
+<div class="chiffres chiffres-ligne">
+  <div class="chiffre neutre"><span>Travaux prévus</span><b>{{ sim.proj.totaux.travaux|euros_rond }}</b>
+    <small>de {{ sim.proj.annee_debut }} à {{ sim.proj.annee_fin }}{% if indexation %}, prix +{{ indexation|string|replace(".", ",") }} %/an{% endif %}</small></div>
+  <div class="chiffre neutre"><span>Cotisation simulée</span><b>{{ sim.proj.cotisation|euros_rond }}</b>
+    <small>par an · minimum légal {{ sim.cmin.minimum_applicable|euros_rond }}{% if not sim.cmin.plan_adopte %}, {{ sim.cmin.minimum_si_adopte|euros_rond }} si le plan est adopté{% endif %}</small></div>
+  <div class="chiffre{{ ' neutre' if not sim.appels }}"><span>À appeler en plus du fonds</span><b>{{ sim.appels|euros_rond }}</b>
+    <small>{% if sim.appels %}sur la durée du plan{% else %}le fonds suffit{% endif %}</small></div>
+  <div class="chiffre neutre"><span>Cotisation pour tout lisser</span><b>{{ sim.lissage.cotisation_lissee|euros_rond }}</b>
+    <small>par an, sans appel exceptionnel</small></div>
+</div>
+
+<figure class="graphique" aria-label="Travaux par année : part payée par le fonds de travaux et part à appeler en plus">
+  <div class="barres" style="--n:{{ sim.graphique.barres|length }}">
+    {% for b in sim.graphique.barres %}
+    <div class="barre-annee" title="{{ b.annee }} : {{ b.travaux|euros_rond }} de travaux{% if b.appel %}, dont {{ b.appel|euros_rond }} à appeler en plus{% endif %}">
+      <div class="pile">
+        {% if b.travaux %}<div class="montant">{{ (b.travaux / 1000)|round(0)|int }} k€</div>{% endif %}
+        {% if b.h_appel %}<div class="appel" style="height:{{ '%.2f'|format(b.h_appel * 0.88) }}%"></div>{% endif %}
+        {% if b.h_fonds %}<div class="fonds" style="height:{{ '%.2f'|format(b.h_fonds * 0.88) }}%"></div>{% endif %}
+      </div>
+      <div class="an">{{ b.annee }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <figcaption class="discret"><span><span class="pastille fonds"></span>payé par le fonds de travaux</span>
+    <span><span class="pastille appel"></span>à appeler en plus auprès des copropriétaires</span></figcaption>
+</figure>
+
+<details class="formulaire" style="margin-top:1rem">
+  <summary>Le détail année par année</summary>
+  <table class="table" style="margin-top:.8rem">
+    <thead><tr><th>Année</th><th class="nombre">Fonds au 1er janvier</th><th class="nombre">Cotisation</th><th class="nombre">Travaux</th><th class="nombre">Appel en plus</th><th class="nombre">Fonds au 31 décembre</th></tr></thead>
+    <tbody>
+    {% for a in sim.proj.annees %}
+    <tr><td><strong>{{ a.annee }}</strong>{% for t in a.travaux %}<br><span class="discret">{{ t.intitule }}</span>{% endfor %}</td>
+      <td class="nombre">{{ a.solde_debut|euros_rond }}</td><td class="nombre">{{ a.cotisation|euros_rond }}</td>
+      <td class="nombre">{{ a.montant_travaux|euros_rond if a.montant_travaux else "—" }}</td>
+      <td class="nombre{{ ' fort' if a.appel_complementaire }}">{{ a.appel_complementaire|euros_rond if a.appel_complementaire else "—" }}</td>
+      <td class="nombre">{{ a.solde_fin|euros_rond }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>

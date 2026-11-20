@@ -10,7 +10,7 @@ Connexion : un mot de passe (INTERFACE_MOT_DE_PASSE, à défaut MOTEUR_TOKEN) ou
 session signée de 8 heures. Les PDF sont ceux des routes existantes de l'API, qui
 acceptent la session du syndic à la place de la clé.
 
-Les écrans de séance d'AG sur tablette et le module chantier relèvent du dépôt privé.
+Les écrans de séance d'AG sur tablette et le suivi de chantier relèvent du dépôt privé.
 """
 
 from __future__ import annotations
@@ -394,6 +394,186 @@ def coproprietaires_page(request: Request, copro: str):
         nom = ETAGES.get(k["etage"], f"{k['etage']}{'er' if k['etage'] == 1 else 'e'} étage")
         etages.setdefault(nom, []).append(k)
     return page(request, "coproprietaires.html", copro, etages=etages)
+
+
+# --------------------------------------------------------------------------- #
+# Travaux : dossiers et devis
+# --------------------------------------------------------------------------- #
+QUI_DECIDE = {"assemblee_generale": "L'assemblée générale", "conseil_syndical": "Le conseil syndical",
+              "syndic": "Le syndic", "syndic_urgence": "Le syndic (urgence)", "a_determiner": "À déterminer"}
+
+
+def _fourchette(comp) -> tuple | None:
+    montants = [d["montant_ttc"] for d in comp["devis"] if not d["expire"]] or [d["montant_ttc"] for d in comp["devis"]]
+    return (min(montants), max(montants)) if montants else None
+
+
+@routeur.get("/{copro}/travaux", response_class=HTMLResponse)
+def travaux_page(request: Request, copro: str):
+    exiger(request, copro)
+    jour = aujourdhui(request)
+    fiche = A.fiche_de(copro)
+    dossiers = []
+    for x in reversed(A.travaux.lister_dossiers(A.DOSSIER_DATA, copro)):
+        d = A.travaux.charger_dossier(A.travaux.dossier_dir(A.DOSSIER_DATA, copro, x["id"]))
+        synth = A.travaux.synthese(fiche, d, jour)
+        dossiers.append({**x, "fourchette": _fourchette(synth["comparatif"]),
+                         "qui": QUI_DECIDE.get(synth["aiguillage"]["circuit"], ""),
+                         "nb_alertes": len(synth["comparatif"]["alertes"]), "plan_ligne": d.get("plan_ligne")})
+    return page(request, "travaux.html", copro, dossiers=dossiers, natures=A.travaux.NATURES,
+                cles=fiche["cles_repartition"], a_un_plan=bool(A.plan_travaux.plan_de(fiche)))
+
+
+@routeur.post("/{copro}/travaux")
+def travaux_creer(request: Request, copro: str, titre: str = Form(...), description: str = Form(""),
+                  nature: str = Form("reparation"), cle: str = Form("generales"), urgence: bool = Form(False)):
+    exiger(request, copro)
+    try:
+        d = A.travaux.creer_dossier(A.DOSSIER_DATA, copro, A.fiche_de(copro), titre[:120], description[:4000],
+                                    nature, urgence, cle, aujourdhui(request))
+    except A.travaux.DossierInvalide as e:
+        return retour(f"/app/{copro}/travaux", f"Dossier non créé : {e}", request)
+    return retour(f"/app/{copro}/travaux/{d['id']}", "Dossier ouvert. Ajoutez les devis au fur et à mesure.", request)
+
+
+def _dossier(copro: str, dossier_id: str) -> dict:
+    chemin = A.travaux.dossier_dir(A.DOSSIER_DATA, copro, dossier_id)
+    if "/" in dossier_id or ".." in dossier_id or not (chemin / "dossier.yaml").is_file():
+        raise HTTPException(404, "Dossier de travaux introuvable")
+    return A.travaux.charger_dossier(chemin)
+
+
+@routeur.get("/{copro}/travaux/{dossier_id}", response_class=HTMLResponse)
+def travaux_dossier(request: Request, copro: str, dossier_id: str):
+    exiger(request, copro)
+    jour = aujourdhui(request)
+    fiche = A.fiche_de(copro)
+    synth = A.travaux.synthese(fiche, _dossier(copro, dossier_id), jour)
+    comp = synth["comparatif"]
+    # Les devis dans leur ordre d'arrivée : l'interface ne classe ni ne met en avant aucun devis
+    devis = sorted(comp["devis"], key=lambda x: int(x["id"][1:]))
+    for x in devis:
+        alertes = (x.get("verification") or {}).get("alertes") or []
+        x["verif"] = (None if not x.get("verification") else
+                      f"{len(alertes)} point{'s' if len(alertes) > 1 else ''} à regarder" if alertes else "Vérifiée")
+    ordre = [x["id"] for x in devis]
+    fourchette = _fourchette(comp)
+    ecart_plan = None
+    if synth["dossier"].get("estimation_plan") and fourchette:   # rapportée à l'estimation, sans désigner de devis
+        est = Decimal(synth["dossier"]["estimation_plan"])
+        ecart_plan = [((m - est) / est * 100).quantize(Decimal("1")) for m in fourchette]
+    return page(request, "travaux_dossier.html", copro, onglet="travaux", d=synth["dossier"], comp=comp,
+                devis=devis, ordre=ordre, aig=synth["aiguillage"], fourchette=fourchette, ecart_plan=ecart_plan,
+                qui=QUI_DECIDE.get(synth["aiguillage"]["circuit"], ""), natures=A.travaux.NATURES)
+
+
+@routeur.post("/{copro}/travaux/{dossier_id}/devis")
+async def travaux_devis(request: Request, copro: str, dossier_id: str, entreprise: str = Form(...),
+                        montant_ht: str = Form(...), taux_tva: str = Form("10"), delai_jours: str = Form(""),
+                        valide_jusqu_au: str = Form(""), remarques: str = Form(""),
+                        fichier: UploadFile | None = File(None)):
+    exiger(request, copro)
+    d = _dossier(copro, dossier_id)
+    pdf = None
+    if fichier is not None and fichier.filename:
+        pdf = await fichier.read(A.travaux.TAILLE_MAX_PDF + 1)
+    try:
+        validite = date.fromisoformat(valide_jusqu_au) if valide_jusqu_au else None
+        delai = int(delai_jours) if delai_jours.strip() else None
+        x = A.travaux.ajouter_devis(A.DOSSIER_DATA, copro, d, entreprise[:120], montant_ht, taux_tva, delai,
+                                    validite, remarques[:2000], pdf, aujourdhui(request))
+    except (A.travaux.DossierInvalide, ValueError) as e:
+        return retour(f"/app/{copro}/travaux/{dossier_id}#ajouter", f"Devis non ajouté : {e}", request)
+    return retour(f"/app/{copro}/travaux/{dossier_id}", f"Devis {x['id']} de {x['entreprise']} ajouté.", request)
+
+
+# --------------------------------------------------------------------------- #
+# Plan pluriannuel de travaux
+# --------------------------------------------------------------------------- #
+def _graphique(proj) -> dict:
+    """Les barres du graphique : par année, la part prise sur le fonds et l'appel en plus."""
+    annees = proj["annees"]
+    haut = max([a["montant_travaux"] for a in annees] + [Decimal(1)])
+    barres = []
+    for a in annees:
+        barres.append({"annee": a["annee"], "travaux": a["montant_travaux"], "fonds": a["pris_sur_fonds"],
+                       "appel": a["appel_complementaire"], "solde": a["solde_fin"],
+                       "h_fonds": float(a["pris_sur_fonds"] / haut * 100),
+                       "h_appel": float(a["appel_complementaire"] / haut * 100)})
+    return {"barres": barres, "haut": haut}
+
+
+def _simulation(fiche, suivi, cotisation, indexation) -> dict:
+    proj = A.plan_travaux.projection(fiche, suivi, cotisation, indexation)
+    lissage = A.plan_travaux.cotisation_lissee(fiche, suivi, indexation)
+    cmin = A.plan_travaux.cotisation_minimale(fiche)
+    return {"proj": proj, "lissage": lissage, "cmin": cmin, "graphique": _graphique(proj),
+            "en_bref": A.plan_travaux.en_bref(fiche, proj, lissage, cmin),
+            "appels": proj["totaux"]["appels_complementaires"]}
+
+
+def _decimal(texte: str | None, defaut=None):
+    if texte is None or not str(texte).strip():
+        return defaut
+    try:
+        v = Decimal(str(texte).replace(",", ".").replace(" ", "").replace(" ", ""))
+    except Exception:
+        return defaut
+    return v if v >= 0 else defaut
+
+
+@routeur.get("/{copro}/plan", response_class=HTMLResponse)
+def plan_page(request: Request, copro: str):
+    exiger(request, copro)
+    fiche = A.fiche_de(copro)
+    if not A.plan_travaux.plan_de(fiche):
+        return page(request, "plan.html", copro, plan=None)
+    erreurs = A.plan_travaux.valider_plan(fiche)
+    if erreurs:
+        return page(request, "plan.html", copro, plan=None, erreurs=erreurs)
+    suivi = A.plan_travaux.charger_suivi(A.DOSSIER_DATA, copro)
+    sim = _simulation(fiche, suivi, None, 0)
+    return page(request, "plan.html", copro, plan=A.plan_travaux.plan_de(fiche),
+                lignes=A.plan_travaux.lignes(fiche, suivi), statuts=A.plan_travaux.STATUTS,
+                conformite=A.plan_travaux.conformite(fiche, aujourdhui(request), suivi),
+                sim=sim, cotisation=sim["proj"]["cotisation"], indexation=0)
+
+
+@routeur.get("/{copro}/plan/simulation", response_class=HTMLResponse)
+def plan_simulation(request: Request, copro: str, cotisation: str = "", indexation: str = ""):
+    exiger(request, copro)
+    fiche = A.fiche_de(copro)
+    if not A.plan_travaux.plan_de(fiche):
+        raise HTTPException(404, "Pas de plan de travaux")
+    suivi = A.plan_travaux.charger_suivi(A.DOSSIER_DATA, copro)
+    idx = min(_decimal(indexation, Decimal(0)), Decimal(20))
+    sim = _simulation(fiche, suivi, _decimal(cotisation), idx)
+    return templates.TemplateResponse(request, "_plan_simulation.html", {"copro": copro, "sim": sim,
+                                      "indexation": idx})
+
+
+@routeur.post("/{copro}/plan/lignes/{ligne}/dossier")
+def plan_ouvrir_dossier(request: Request, copro: str, ligne: str):
+    exiger(request, copro)
+    try:
+        d = A.plan_travaux.ouvrir_dossier(A.DOSSIER_DATA, copro, A.fiche_de(copro), ligne, aujourdhui(request))
+    except (A.plan_travaux.PlanInvalide, A.travaux.DossierInvalide) as e:
+        return retour(f"/app/{copro}/plan#lignes", f"Dossier non ouvert : {e}", request)
+    return retour(f"/app/{copro}/travaux/{d['id']}", "Dossier ouvert depuis le plan de travaux : les devis seront "
+                  "comparés à son estimation.", request)
+
+
+@routeur.post("/{copro}/plan/lignes/{ligne}")
+def plan_suivre_ligne(request: Request, copro: str, ligne: str, statut: str = Form(...), annee: str = Form(""),
+                      montant_reel: str = Form(""), note: str = Form("")):
+    exiger(request, copro)
+    try:
+        A.plan_travaux.mettre_a_jour_ligne(A.DOSSIER_DATA, copro, A.fiche_de(copro), ligne, statut,
+                                           int(annee) if annee.strip() else None, _decimal(montant_reel),
+                                           note[:500], aujourdhui(request))
+    except (A.plan_travaux.PlanInvalide, ValueError) as e:
+        return retour(f"/app/{copro}/plan#lignes", f"Ligne non mise à jour : {e}", request)
+    return retour(f"/app/{copro}/plan#lignes", f"Ligne {ligne} mise à jour.", request)
 
 
 # --------------------------------------------------------------------------- #

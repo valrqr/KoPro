@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block contenu %}
+<p class="discret"><a href="/app/{{ copro }}/travaux">Travaux</a></p>
+<h1>{{ d.titre }}</h1>
+<p class="chapeau">{{ natures[d.nature] }} · réparti selon la clé « {{ comp.cle_libelle }} » · ouvert le {{ d.cree_le|date_fr }}{% if d.urgence %} · <span class="erreur">urgent</span>{% endif %}.
+  {% if d.description %}<br>{{ d.description }}{% endif %}</p>
+{% for al in comp.alertes %}<div class="message">{{ al }}</div>{% endfor %}
+
+<div class="colonnes">
+  <section>
+    <h2 style="margin-top:0">Devis reçus</h2>
+    {% if devis %}
+    <table class="table">
+      <thead><tr><th>Entreprise</th><th class="nombre">HT</th><th class="nombre">TTC</th><th>Valable jusqu'au</th><th>Délai</th><th></th></tr></thead>
+      <tbody>
+      {% for x in devis %}
+      <tr {% if x.expire %}class="fait"{% endif %}>
+        <td><strong>{{ x.id }} · {{ x.entreprise }}</strong>
+          {% if x.remarques %}<br><span class="discret">{{ x.remarques }}</span>{% endif %}
+          {% if x.verif %}<br><span class="discret">Entreprise : {{ x.verif }}</span>{% endif %}</td>
+        <td class="nombre">{{ x.montant_ht|euros }}</td>
+        <td class="nombre">{{ x.montant_ttc|euros }}<br><span class="discret">TVA {{ x.taux_tva|replace(".", ",") }} %</span></td>
+        <td>{% if x.valide_jusqu_au %}{{ x.valide_jusqu_au|date_fr }}{% if x.expire %}<br><span class="erreur">expiré</span>{% endif %}{% else %}<span class="discret">non précisé</span>{% endif %}</td>
+        <td>{% if x.delai_jours is not none %}{{ x.delai_jours }} j{% else %}<span class="discret">—</span>{% endif %}</td>
+        <td>{% if x.fichier %}<a href="/copros/{{ copro }}/travaux/{{ d.id }}/devis/{{ x.id }}/pdf" target="_blank">PDF</a>{% else %}<span class="erreur">PDF manquant</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="discret">Les devis sont listés dans leur ordre d'arrivée. Le prix n'est qu'un critère parmi d'autres :
+      prestations incluses, délai, garanties, références de l'entreprise.</p>
+
+    <details class="formulaire" style="margin-top:1rem">
+      <summary>Quote-part de chaque copropriétaire selon le devis</summary>
+      <table class="table" style="margin-top:.8rem">
+        <thead><tr><th>Copropriétaire</th><th class="nombre">Tantièmes</th>{% for did in ordre %}<th class="nombre">{{ did }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for q in comp.quotes_parts %}
+        <tr><td>{{ q.nom }}</td><td class="nombre">{{ q.tantiemes }} / {{ comp.base_tantiemes }}</td>
+          {% for did in ordre %}<td class="nombre">{{ q.parts[did]|euros }}</td>{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% else %}<div class="vide">Pas encore de devis. Pour une vraie comparaison, demandez-en au moins deux sur le même descriptif.</div>{% endif %}
+
+    <h2 id="ajouter">Ajouter un devis</h2>
+    <details class="formulaire" {% if not devis %}open{% endif %}>
+      <summary>Nouveau devis</summary>
+      <form method="post" action="/app/{{ copro }}/travaux/{{ d.id }}/devis" enctype="multipart/form-data" style="display:grid;gap:.9rem;margin-top:.8rem">
+        <label>Entreprise <input type="text" name="entreprise" required maxlength="120"></label>
+        <div class="ligne">
+          <label>Montant HT <input type="text" name="montant_ht" required inputmode="decimal" placeholder="2 780,00" size="10"></label>
+          <label>TVA
+            <select name="taux_tva"><option value="5.5">5,5 %</option><option value="10" selected>10 %</option><option value="20">20 %</option></select></label>
+          <label>Délai (jours) <input type="number" name="delai_jours" min="0" max="3650" style="width:6rem"></label>
+          <label>Valable jusqu'au <input type="date" name="valide_jusqu_au"></label>
+        </div>
+        <label>Remarques <input type="text" name="remarques" maxlength="2000" placeholder="Pose comprise, garantie 10 ans…"></label>
+        <label>Le devis en PDF (10 Mo maximum) <input type="file" name="fichier" accept="application/pdf"></label>
+        <p class="discret" style="margin:0">TVA à 10 % pour l'entretien et la rénovation de logements de plus de deux ans, 5,5 % pour la rénovation énergétique.</p>
+        <div><button type="submit">Ajouter le devis</button></div>
+      </form>
+    </details>
+  </section>
+
+  <aside>
+    <div class="chiffres">
+      <div class="chiffre neutre"><span>Devis reçus</span><b>{{ devis|length }}</b>
+        <small>{% set exp = devis|selectattr("expire")|list|length %}{% if exp %}dont {{ exp }} expiré{{ "s" if exp > 1 }}{% elif devis %}tous valides{% else %}au moins 2 conseillés{% endif %}</small></div>
+      {% if fourchette %}
+      <div class="chiffre neutre"><span>Fourchette TTC</span>
+        <b>{% if fourchette[0] == fourchette[1] %}{{ fourchette[0]|euros_rond }}{% else %}{{ fourchette[0]|euros_rond }} à {{ fourchette[1]|euros_rond }}{% endif %}</b>
+        <small>{{ "devis en cours de validité" if devis|selectattr("expire")|list else "de tous les devis" }}</small></div>
+      {% endif %}
+      {% if d.estimation_plan %}
+      {% set hors = ecart_plan and ecart_plan[1] > 20 %}
+      <div class="chiffre{{ ' neutre' if not hors }}"><span>Estimation du plan</span><b>{{ d.estimation_plan|euros_rond }}</b>
+        <small>ligne {{ d.plan_ligne }}{% if ecart_plan %} · devis {{ "valables " if devis|selectattr("expire")|list }}de
+        {% for e in ecart_plan|unique %}{{ "+" if e > 0 }}{{ e }} %{{ " à " if not loop.last }}{% endfor %} par rapport à l'estimation{% endif %}</small></div>
+      {% endif %}
+    </div>
+
+    <h3>Qui décide ?</h3>
+    <p style="margin:.2rem 0"><strong>{{ aig.titre }}</strong></p>
+    <p class="discret" style="margin:.2rem 0 .6rem">{{ aig.explication }}</p>
+    {% if aig.etapes %}<ol style="padding-left:1.2rem;margin:.4rem 0">{% for e in aig.etapes %}<li>{{ e }}</li>{% endfor %}</ol>{% endif %}
+    {% if aig.majorite %}<p class="discret" style="margin:.4rem 0">{{ aig.majorite }}</p>{% endif %}
+    {% for n in aig.notes %}<p style="margin:.4rem 0"><strong>{{ n }}</strong></p>{% endfor %}
+    <p class="discret" style="margin:.6rem 0 1rem">{{ aig.avertissement }}</p>
+
+    {% if devis %}<a class="bouton" href="/copros/{{ copro }}/travaux/{{ d.id }}/comparatif.pdf?au={{ jour.isoformat() }}" target="_blank">Comparatif à joindre à la convocation</a>{% endif %}
+  </aside>
+</div>
+{% endblock %}

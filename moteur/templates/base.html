@@ -17,6 +17,7 @@
     <nav aria-label="Rubriques">
       {% set rubriques = [("tableau", "", "Tableau de bord"), ("impayes", "/impayes", "Impayés"),
                           ("appels", "/appels", "Appels de fonds"), ("ag", "/ag", "Assemblées générales"),
+                          ("travaux", "/travaux", "Travaux"), ("plan", "/plan", "Plan de travaux"),
                           ("coproprietaires", "/coproprietaires", "Copropriétaires"), ("documents", "/documents", "Documents")] %}
       {% for cle, chemin, libelle in rubriques %}
       <a href="/app/{{ copro }}{{ chemin }}" {% if onglet == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>

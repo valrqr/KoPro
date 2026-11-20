@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Travaux</h1>
+<p class="chapeau">Un dossier par chantier : les devis, leur comparaison et qui doit décider. Mitoyen présente les devis
+  côte à côte sans en recommander aucun.{% if a_un_plan %} Les travaux prévus au <a href="/app/{{ copro }}/plan">plan de travaux</a>
+  s'ouvrent depuis sa page.{% endif %}</p>
+
+{% if dossiers %}
+<table class="table">
+  <thead><tr><th>Dossier</th><th>Ouvert le</th><th class="nombre">Devis</th><th class="nombre">Fourchette TTC</th><th>Qui décide</th></tr></thead>
+  <tbody>
+  {% for x in dossiers %}
+  <tr>
+    <td><a href="/app/{{ copro }}/travaux/{{ x.id }}"><strong>{{ x.titre }}</strong></a>
+      <br><span class="discret">{{ natures[x.nature] }}{% if x.plan_ligne %} · ligne {{ x.plan_ligne }} du plan{% endif %}{% if x.urgence %} · <span class="erreur">urgent</span>{% endif %}
+      {% if x.nb_alertes %} · {{ x.nb_alertes }} point{{ "s" if x.nb_alertes > 1 }} à regarder{% endif %}</span></td>
+    <td>{{ x.cree_le|date_fr }}</td>
+    <td class="nombre">{{ x.nb_devis }}</td>
+    <td class="nombre">{% if x.fourchette %}{% if x.fourchette[0] == x.fourchette[1] %}{{ x.fourchette[0]|euros_rond }}{% else %}{{ x.fourchette[0]|euros_rond }} à {{ x.fourchette[1]|euros_rond }}{% endif %}{% else %}<span class="discret">aucun devis</span>{% endif %}</td>
+    <td>{{ x.qui }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<div class="vide">Aucun dossier de travaux pour l'instant.</div>{% endif %}
+
+<h2>Ouvrir un dossier</h2>
+<details class="formulaire" {% if not dossiers %}open{% endif %}>
+  <summary>Nouveau dossier de travaux</summary>
+  <form method="post" action="/app/{{ copro }}/travaux" style="display:grid;gap:.9rem;margin-top:.8rem">
+    <label>Intitulé <input type="text" name="titre" required minlength="3" maxlength="120" placeholder="Remplacement de la porte du garage"></label>
+    <label>Ce qu'il faut faire, en quelques lignes
+      <textarea name="description" rows="3" maxlength="4000"></textarea></label>
+    <div class="ligne">
+      <label>Nature des travaux
+        <select name="nature">{% for k, v in natures.items() %}<option value="{{ k }}" {% if k == "reparation" %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+      <label>Répartis selon
+        <select name="cle">{% for k, c in cles.items() %}<option value="{{ k }}">{{ c.libelle }}</option>{% endfor %}</select></label>
+    </div>
+    <label style="display:flex;gap:.5rem;align-items:center;color:var(--encre)">
+      <input type="checkbox" name="urgence" value="true"> Urgence pour la sauvegarde de l'immeuble (fuite, chute de pierres…)</label>
+    <div><button type="submit">Ouvrir le dossier</button></div>
+  </form>
+</details>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Plan de travaux</h1>
+{% if not plan %}
+<p class="chapeau">Le plan pluriannuel de travaux liste les travaux des dix prochaines années et leur coût. Il est établi
+  à partir d'un diagnostic technique, puis présenté en assemblée générale.</p>
+{% if erreurs %}{% for e in erreurs %}<div class="message"><span class="erreur">{{ e }}</span></div>{% endfor %}
+{% else %}<div class="vide">La fiche de la copropriété ne contient pas encore de plan de travaux. Renseignez la rubrique
+  <code>plan_travaux</code> de la fiche (voir la documentation) : Mitoyen calculera le financement année par année.</div>{% endif %}
+{% else %}
+<p class="chapeau">Établi le {{ plan.elabore_le|date_fr }}{% if plan.elabore_par %} par {{ plan.elabore_par }}{% endif %} ·
+  {% if plan.adopte_le %}adopté en AG le {{ plan.adopte_le|date_fr }}{% else %}pas encore adopté en assemblée générale{% endif %}.</p>
+
+<p>{{ sim.en_bref }}</p>
+
+<h2>Simuler le financement</h2>
+<form class="formulaire ligne" hx-get="/app/{{ copro }}/plan/simulation" hx-target="#simulation" hx-trigger="change, submit"
+      hx-sync="this:replace" style="margin:0 0 1rem;align-items:end" onsubmit="return false">
+  <label>Cotisation annuelle au fonds de travaux, en euros
+    <input type="text" name="cotisation" value="{{ cotisation|int }}" inputmode="decimal" size="8"></label>
+  <label>Hausse des prix par an, en %
+    <input type="number" name="indexation" value="{{ indexation }}" min="0" max="20" step="0.5" style="width:6rem"></label>
+  <button type="submit" class="secondaire">Recalculer</button>
+  <span class="discret">Simulation seulement : la cotisation se vote en AG.</span>
+</form>
+
+<div id="simulation">{% include "_plan_simulation.html" %}</div>
+
+
+<h2>Points de vigilance</h2>
+<table class="table">
+  <tbody>
+  {% for c in conformite %}
+  <tr><td style="width:12rem"><strong>{{ c.sujet }}</strong><br>
+      <span class="{{ 'erreur' if c.etat == "manquant" else 'discret' }}">{{ {"ok": "En ordre", "attention": "À surveiller", "manquant": "Manquant", "info": "Pour information"}.get(c.etat, c.etat) }}</span></td>
+    <td>{{ c.message }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2 id="lignes">Travaux prévus</h2>
+<table class="table">
+  <thead><tr><th>Année</th><th>Travaux</th><th class="nombre">Estimation</th><th>Suivi</th></tr></thead>
+  <tbody>
+  {% for l in lignes %}
+  <tr {% if l.statut in ("realise", "abandonne") %}class="fait"{% endif %}>
+    <td class="nombre"><strong>{{ l.annee }}</strong>{% if l.annee != l.annee_prevue %}<br><span class="discret">prévu {{ l.annee_prevue }}</span>{% endif %}</td>
+    <td><strong>{{ l.intitule }}</strong><br><span class="discret">{{ l.id }} · {{ l.categorie_libelle }} · {{ l.priorite_libelle }}</span>
+      {% if l.note %}<br><span class="discret">{{ l.note }}</span>{% endif %}</td>
+    <td class="nombre">{{ l.montant|euros_rond }}{% if l.montant_reel %}<br><span class="discret">payé {{ l.montant_reel|euros_rond }}</span>{% endif %}</td>
+    <td>
+      {% if l.dossier %}<a href="/app/{{ copro }}/travaux/{{ l.dossier }}">{{ l.statut_libelle }}</a>{% else %}{{ l.statut_libelle }}{% endif %}
+      <div class="actions" style="margin-top:.4rem">
+        {% if l.statut in ("prevu", "reporte") %}
+        <form method="post" action="/app/{{ copro }}/plan/lignes/{{ l.id }}/dossier"><button type="submit" class="secondaire">Ouvrir le dossier</button></form>
+        {% endif %}
+        {% if l.statut not in ("realise", "abandonne") %}
+        <details><summary class="discret" style="cursor:pointer">Mettre à jour</summary>
+          <form method="post" action="/app/{{ copro }}/plan/lignes/{{ l.id }}" style="display:grid;gap:.5rem;margin-top:.5rem;min-width:14rem">
+            <select name="statut" aria-label="Nouvel état">{% for k, v in statuts.items() %}{% if k != "engage" %}<option value="{{ k }}" {% if k == l.statut %}selected{% endif %}>{{ v }}</option>{% endif %}{% endfor %}</select>
+            <label>Nouvelle année (report) <input type="number" name="annee" min="{{ l.annee + 1 }}" max="2100" style="width:7rem"></label>
+            <label>Montant payé (réalisé) <input type="text" name="montant_reel" inputmode="decimal" size="8"></label>
+            <label>Note <input type="text" name="note" maxlength="500"></label>
+            <button type="submit" class="secondaire">Enregistrer</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p style="margin-top:1.4rem"><a class="bouton secondaire" href="/copros/{{ copro }}/plan.pdf?au={{ jour.isoformat() }}" target="_blank">Le plan en PDF, pour l'AG</a></p>
+<p class="discret">Estimations indicatives, à faire confirmer par des devis. Pas un conseil juridique : en cas de doute sur
+  les obligations, l'ADIL de votre département répond gratuitement.</p>
+{% endif %}
+{% endblock %}

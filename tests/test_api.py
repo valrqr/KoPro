@@ -1217,7 +1217,7 @@ def test_interface_connexion_obligatoire():
 def test_interface_pages_et_actions():
     n = _navigateur()
     n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
-    for page in ("", "/impayes", "/appels", "/ag", "/coproprietaires", "/documents"):
+    for page in ("", "/impayes", "/appels", "/ag", "/travaux", "/plan", "/coproprietaires", "/documents"):
         r = n.get(f"/app/mimosas{page}", params={"au": "2027-05-20"})
         assert r.status_code == 200, page
         assert 'aria-current="page"' in r.text
@@ -1239,3 +1239,46 @@ def test_interface_pages_et_actions():
     assert r.status_code == 200 and "AG non créée" in r.text
     # Une copropriété inconnue
     assert n.get("/app/inconnue").status_code == 404
+
+
+def test_interface_travaux_et_plan():
+    n = _navigateur()
+    n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
+    n.get("/app/mimosas", params={"au": "2027-06-01"})
+    # Un dossier ouvert depuis l'interface, puis deux devis dans le désordre des prix
+    r = n.post("/app/mimosas/travaux", data={"titre": "Peinture de la cage d'escalier", "nature": "entretien",
+                                             "cle": "generales"}, follow_redirects=False)
+    assert r.status_code == 303
+    url = r.headers["location"]
+    assert url.startswith("/app/mimosas/travaux/2027-")
+    for ent, ht in (("Peintres du Paillon", "5400"), ("Atelier Couleurs", "4900,50")):
+        r = n.post(url + "/devis", data={"entreprise": ent, "montant_ht": ht, "taux_tva": "10",
+                                         "valide_jusqu_au": "2027-12-31"},
+                   files={"fichier": ("d.pdf", PDF, "application/pdf")}, follow_redirects=False)
+        assert r.status_code == 303
+    t = n.get(url).text
+    # Ordre d'arrivée, aucun devis mis en avant
+    assert t.index("D1 · Peintres du Paillon") < t.index("D2 · Atelier Couleurs")
+    assert "moins cher" not in t and "recommand" not in t.split("Devis reçus")[1]
+    assert "Décision en assemblée générale" in t and "ADIL" in t
+    # Un devis illisible : message, pas d'erreur serveur
+    r = n.post(url + "/devis", data={"entreprise": "X", "montant_ht": "beaucoup"})
+    assert r.status_code == 200 and "Devis non ajouté" in r.text
+    assert n.get("/app/mimosas/travaux/inexistant").status_code == 404
+    assert "Peinture de la cage" in n.get("/app/mimosas/travaux").text
+    # Le plan : simulation sans rechargement, une cotisation lissée supprime les appels
+    assert "Simuler le financement" in n.get("/app/mimosas/plan").text
+    s = n.get("/app/mimosas/plan/simulation", params={"cotisation": "16740"}).text
+    assert 'class="appel"' not in s and "le fonds suffit" in s
+    s = n.get("/app/mimosas/plan/simulation", params={"cotisation": "n'importe quoi", "indexation": "99"}).text
+    assert 'class="appel"' in s and "+20 %" in s
+    # Report d'une ligne, puis ouverture du dossier d'une autre
+    r = n.post("/app/mimosas/plan/lignes/L07", data={"statut": "reporte", "annee": "2040"})
+    assert "Ligne L07 mise à jour" in r.text
+    r = n.post("/app/mimosas/plan/lignes/L07", data={"statut": "reporte", "annee": "2020"})
+    assert "Ligne non mise à jour" in r.text
+    r = n.post("/app/mimosas/plan/lignes/L06/dossier", follow_redirects=False)
+    assert r.status_code == 303 and "/app/mimosas/travaux/" in r.headers["location"]
+    assert "Estimation du plan" in n.get(r.headers["location"]).text
+    r = n.post("/app/mimosas/plan/lignes/L06/dossier")
+    assert "Dossier non ouvert" in r.text

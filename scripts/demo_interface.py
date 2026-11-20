@@ -24,6 +24,8 @@ import ag as assemblee  # noqa: E402
 import avis_appel  # noqa: E402
 import banque  # noqa: E402
 import meubles_tourisme  # noqa: E402
+import plan_travaux  # noqa: E402
+import travaux  # noqa: E402
 from fiche_copro import charger_fiche  # noqa: E402
 
 DEMO = RACINE / "demo"
@@ -45,6 +47,15 @@ def main() -> None:
     a = assemblee.creer_ag(data, "mimosas", fiche, date(2027, 6, 12), "10h", "Salle commune, rez-de-chaussée", odj,
                            aujourd_hui=date(2027, 5, 1))
     meubles_tourisme.marquer_inscrites(data, "mimosas", pt["_declarations"], a["id"])
+    # Un dossier de travaux ouvert depuis le plan (porte de hall), avec trois devis
+    d = plan_travaux.ouvrir_dossier(data, "mimosas", fiche, "L01", date(2027, 3, 2))
+    devis = RACINE / "exemples" / "devis"
+    for entreprise, ht, validite, pdf, recu in (
+            ("Portes Azur", "3200", date(2027, 7, 31), "devis_portes_azur.pdf", date(2027, 3, 20)),
+            ("Fermetures Niçoises", "2780", date(2027, 8, 15), "devis_fermetures_nicoises.pdf", date(2027, 4, 3)),
+            ("Menuiserie du Port", "4150", date(2027, 5, 15), "devis_menuiserie_du_port.pdf", date(2027, 4, 18))):
+        travaux.ajouter_devis(data, "mimosas", d, entreprise, ht, "10", 30, validite, "",
+                              (devis / pdf).read_bytes(), recu)
     print(f"Données de démonstration prêtes dans {DEMO.relative_to(RACINE)}/")
     print("Lancer :  MOTEUR_DATA_DIR=demo/data MOTEUR_OUT_DIR=demo/out INTERFACE_MOT_DE_PASSE=demo "
           "uvicorn moteur.api:app --reload")

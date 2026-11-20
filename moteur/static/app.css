@@ -161,6 +161,27 @@ details.formulaire summary { cursor: pointer; font-weight: 500; color: var(--enc
 .connexion { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
 .connexion .formulaire { width: min(24rem, 100%); }
 
+/* ----- Plan de travaux : chiffres en ligne et graphique ----- */
+.chiffres-ligne { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); margin: 1.2rem 0; }
+.chiffres-ligne .chiffre b { font-size: 1.6rem; }
+.graphique { margin: 1.4rem 0 0; background: var(--papier); border: 1px solid var(--filet); border-radius: var(--rayon);
+             padding: 1.2rem 1.2rem .8rem; }
+.barres { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: .5rem; align-items: end;
+          height: 15rem; border-bottom: 1px solid var(--encre); }
+.barre-annee { height: 100%; position: relative; }
+.pile { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.pile .fonds { background: var(--encre); }
+.pile .appel { background: var(--orange); }
+.pile .montant + div { border-radius: 3px 3px 0 0; }
+.pile .montant { font-size: .78rem; color: var(--gris); text-align: center; font-variant-numeric: tabular-nums;
+                 margin-bottom: .25rem; white-space: nowrap; }
+.barre-annee .an { position: absolute; bottom: -1.6rem; left: 0; right: 0; text-align: center; font-size: .85rem;
+                   font-variant-numeric: tabular-nums; }
+.graphique figcaption { margin-top: 2.2rem; display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; align-items: center; }
+.pastille { display: inline-block; width: .8rem; height: .8rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
+.pastille.fonds { background: var(--encre); }
+.pastille.appel { background: var(--orange); }
+
 /* ----- Petits écrans ----- */
 @media (max-width: 52rem) {
   .ossature { grid-template-columns: minmax(0, 1fr); background: var(--pierre); }
@@ -173,5 +194,8 @@ details.formulaire summary { cursor: pointer; font-weight: 500; color: var(--enc
   .copro-nom { margin-top: -.6rem; }
   .colonnes { grid-template-columns: 1fr; }
   .table { display: block; overflow-x: auto; }
+  .barres { gap: .2rem; }
+  .pile .montant { font-size: .62rem; }
+  .barre-annee .an { font-size: .7rem; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

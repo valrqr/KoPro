@@ -14,16 +14,21 @@ Le moteur sert aussi une interface web, à l'adresse `/app`. Pas d'application �
 | **Impayés** | Importer le relevé bancaire ; rattacher un paiement ou l'écarter en un clic ; préparer une relance, l'ouvrir, la marquer envoyée |
 | **Appels de fonds** | Les quatre trimestres de l'exercice : préparer le projet, relire le récapitulatif, valider les avis |
 | **Assemblées générales** | Préparer une AG (l'ordre du jour habituel est proposé), voir son calendrier légal, ouvrir les formulaires de vote, la feuille de présence, le procès-verbal |
+| **Travaux** | Un dossier par chantier : ajouter les devis (montant, validité, PDF), les voir dans leur ordre d'arrivée sans classement ni recommandation, la quote-part de chacun selon chaque devis, qui doit décider et selon quelle majorité, le comparatif à joindre à la convocation |
+| **Plan de travaux** | Le financement des dix ans du plan en un graphique : la part payée par le fonds, la part à appeler en plus. Un simulateur recalcule tout quand on change la cotisation ou la hausse des prix. Pour chaque ligne : ouvrir le dossier de travaux, la reporter, la marquer réalisée |
 | **Copropriétaires** | Présentés étage par étage, comme sur le tableau d'interphone du hall : lots, mail ou courrier, grands caractères, aidant, retard éventuel |
 | **Documents** | Affiche du hall, fiche synthétique, plan de travaux, packs de bienvenue, dossier de vente, déclarations de meublés de tourisme |
 
 <p align="center"><img src="apercu_interphone.png" alt="Les copropriétaires, comme sur le tableau d'interphone" width="760"></p>
+
+<p align="center"><img src="apercu_plan_interface.png" alt="Le plan de travaux : financement année par année et simulateur de cotisation" width="760"></p>
 
 ## Choix de conception
 
 - **Deux polices, deux publics.** L'outil du syndic utilise Barlow, inspirée de la signalétique : fine, nette, en 16 px. La page de vote en ligne et les documents envoyés par courrier utilisent Atkinson Hyperlegible, dessinée pour les personnes malvoyantes. Les documents reçus par mail et les documents collectifs (affiches, PV, fiche synthétique) restent en Helvetica.
 - **La charte des documents.** Le noir du logo, du blanc, un gris pierre ; l'orange est réservé aux chiffres importants, comme sur les PDF.
 - **Rien d'externe.** Les polices et htmx (qui rend les boutons actifs sans recharger la page) sont servis par l'application elle-même : aucun appel à un service tiers.
+- **Neutre sur les devis.** Les devis s'affichent dans leur ordre d'arrivée ; aucun n'est surligné, classé ni recommandé. La fourchette des prix et l'écart à l'estimation du plan sont donnés sans désigner d'entreprise : le choix revient au conseil syndical et à l'assemblée.
 - **Le même principe que le moteur.** L'interface ne fait rien que le syndic n'ait demandé : elle prépare, il valide.
 
 ## Connexion et sécurité
@@ -43,8 +48,8 @@ python scripts/demo_interface.py
 MOTEUR_DATA_DIR=demo/data MOTEUR_OUT_DIR=demo/out INTERFACE_MOT_DE_PASSE=demo uvicorn moteur.api:app --reload
 ```
 
-Ouvrir http://localhost:8000/app/mimosas?au=2027-05-20, mot de passe `demo`. Le paramètre `au` fixe la date de la démonstration : au 20 mai 2027, des paiements attendent confirmation, des relances sont à préparer et les convocations de l'AG du 12 juin doivent partir. Un lien dans la barre latérale ramène à la date du jour.
+Ouvrir http://localhost:8000/app/mimosas?au=2027-05-20, mot de passe `demo`. Le paramètre `au` fixe la date de la démonstration : au 20 mai 2027, des paiements attendent confirmation, des relances sont à préparer, les convocations de l'AG du 12 juin doivent partir, et le dossier de la porte de hall compte trois devis dont un expiré. Un lien dans la barre latérale ramène à la date du jour.
 
 ## Ce qui viendra
 
-Les travaux et le plan pluriannuel restent pour l'instant accessibles par l'API. La tenue de séance d'AG sur tablette et le suivi de chantier feront partie d'une offre complémentaire.
+Les sondages du conseil syndical sur les devis restent pour l'instant accessibles par l'API. La tenue de séance d'AG sur tablette et le suivi de chantier feront partie d'une offre complémentaire.

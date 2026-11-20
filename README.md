@@ -18,7 +18,7 @@ Un assistant open source pour les syndics **bénévoles et coopératifs** de cop
 
 | Brique | En bref | Détails |
 |---|---|---|
-| **Interface du syndic** | Un tableau de bord qui dit ce qui est à faire, du plus urgent au moins pressé ; paiements confirmés et relances préparées en un clic ; copropriétaires présentés comme sur le tableau d'interphone du hall | [Interface](docs/interface.md) |
+| **Interface du syndic** | Un tableau de bord qui dit ce qui est à faire, du plus urgent au moins pressé ; paiements confirmés et relances préparées en un clic ; devis comparés sans parti pris ; plan de travaux simulé ; copropriétaires présentés comme sur le tableau d'interphone du hall | [Interface](docs/interface.md) |
 | **Fiche et échéancier** | Une fiche par copro (lots, tantièmes, contrats, budget), contrôlée à chaque usage. Chaque lundi, le syndic reçoit ses échéances : contrats à résilier, diagnostics, AG, travaux à préparer | [Installation](docs/installation.md) |
 | **Appels de fonds** | Un avis PDF par copropriétaire, réparti au centime près, validé par le syndic avant envoi | [Installation](docs/installation.md) |
 | **Travaux et devis** | Comparatif des devis, quote-part de chacun, entreprises vérifiées dans les registres publics, résumé neutre rédigé par Mistral | [Travaux et vote](docs/travaux-et-vote.md) |
