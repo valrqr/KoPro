@@ -12,7 +12,7 @@ Mitoyen prépare toute l'assemblée générale, du calendrier au procès-verbal,
 | **Rappels** | Un mail à J-7 (ordre du jour, date limite du vote par correspondance) et la veille, avec le fichier « ajouter à mon calendrier » ; voir ci-dessous |
 | **Présences et mandats** | Présents, visio, représentés ; le syndic ne peut pas recevoir de mandat, et au-delà de 3 mandats le total ne doit pas dépasser 10 % des voix |
 | **Feuille de présence** | Avec la date de réception de chaque formulaire ; celui d'un copropriétaire finalement présent est écarté |
-| **Dépouillement** | En séance, on note qui vote contre et qui s'abstient ; une résolution amendée transforme le « pour » par correspondance en défaillance ; majorités 24, 25, 25-1 et 26, clés spéciales |
+| **Dépouillement** | En séance, on note qui vote contre et qui s'abstient ; une résolution amendée transforme le « pour » par correspondance en défaillance ; majorités 24, 25 et 26, passerelles vers un second vote (art. 25-1 et 26-1), clés spéciales ; les points d'information ne sont pas votés |
 | **Procès-verbal** | Brouillon avec les noms et les voix des opposants, abstentionnistes et défaillants, et la liste des copropriétaires à qui le notifier |
 
 <p align="center"><img src="apercu_formulaire_vote.png" alt="Formulaire de vote par correspondance pré-rempli" width="420"></p>

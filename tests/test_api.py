@@ -613,7 +613,7 @@ def test_ag_de_bout_en_bout():
 
     # Formulaires : à temps, hors délai, choix invalide
     ok = c.put(f"{base}/correspondance/CP08", headers=H, json={"recu_le": "2027-04-10", "votes": {
-        "1": "pour", "2": "contre", "3": "pour", "4": "pour", "5": "abstention", "6": None, "7": "pour"}})
+        "1": "pour", "2": "contre", "3": "pour", "4": "pour", "5": None, "6": None, "7": "pour"}})
     assert ok.status_code == 200
     assert c.put(f"{base}/correspondance/CP13", headers=H, json={"recu_le": "2027-04-13", "mode": "email",
                  "votes": {str(n): "pour" for n in range(1, 8)}}).status_code == 200
@@ -643,9 +643,10 @@ def test_ag_de_bout_en_bout():
     dep = c.post(f"{base}/depouillement", headers=H, json={
         "votes": {"2": {"contre": ["CP14", "CP06"], "abstention": ["CP02"]}, "7": {"contre": ["CP05"]}},
         "amendees": [7]}).json()
-    r2, r6, r7 = dep["resolutions"][1], dep["resolutions"][5], dep["resolutions"][6]
+    r2, r5, r6, r7 = (dep["resolutions"][i] for i in (1, 4, 5, 6))
     assert r2["decompte"]["contre"] == 1450 + 1260 + 450 and r2["adoptee"]                # CP14, SCI, CP08 (VPC)
-    assert [p["id"] for p in r6["formulaires_sans_choix"]] == ["CP08"]
+    assert [p["id"] for p in r5["formulaires_sans_choix"]] == ["CP08"]                 # case laissée vide
+    assert r6["information"] and r6["adoptee"] is None and r6["decompte"] is None        # présentation du plan
     assert [p["id"] for p in r7["defaillants_17_1_A"]] == ["CP08"]
     assert r7["decompte"]["total_voix"] == 1000                                         # clé ascenseur
     assert dep["formulaires_ecartes"] == ["CP13"]
@@ -1063,3 +1064,80 @@ def test_rappel_ag_tous_les_rappels_du_jour():
     assert r["courriers"][0]["syndic_email"] and "Simon Paul" in r["courriers"][0]["noms"]
     assert c.get("/rappels-ag", params={"au": "2027-06-06"}, headers=H).json()["nb_envois"] == 0
     assert c.get("/rappels-ag").status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Meublés de tourisme (loi Le Meur) et passerelle de l'article 26-1
+# --------------------------------------------------------------------------- #
+MT = "/copros/mimosas/meubles-tourisme"
+
+
+def test_meubles_tourisme_declaration_et_point_ag():
+    e = c.get(MT, headers=H).json()
+    assert e["interdiction"]["verdict"] == "possible" and e["declarations"] == []
+    d = c.post(f"{MT}/declarations", headers=H, json={"lot": 9, "recue_le": "2027-07-01",
+                                                      "residence_principale": False})
+    assert d.status_code == 201 and d.json()["id"] == "MT001" and d.json()["coproprietaire"] == "CP08"
+    assert c.post(f"{MT}/declarations", headers=H, json={"lot": 9, "recue_le": "2027-07-02"}).status_code == 422
+    assert c.post(f"{MT}/declarations", headers=H, json={"lot": 17, "recue_le": "2027-07-02"}).status_code == 422
+    assert c.post(f"{MT}/declarations", headers=H, json={"lot": 99, "recue_le": "2027-07-02"}).status_code == 422
+    # La prochaine AG reçoit automatiquement le point d'information, sans vote
+    a = c.post(AG, headers=H, json={"date": "2027-09-18", "heure": "18h30", "lieu": "Salle commune",
+                                    "resolutions": [{"titre": "Approbation des comptes", "majorite": "24"}]}).json()
+    assert a["points_ajoutes"] and a["resolutions"][-1]["majorite"] == "info"
+    assert "lot 9 (T2 2e)" in a["resolutions"][-1]["texte"] and "Simon" not in a["resolutions"][-1]["texte"]
+    assert c.get(MT, headers=H).json()["declarations"][0]["inscrite_ag"] == "2027-09-18"
+    # Une seule fois : l'AG suivante ne le reprend pas
+    a2 = c.post(AG, headers=H, json={"date": "2027-10-09", "heure": "18h30", "lieu": "Salle commune",
+                                     "resolutions": [{"titre": "Travaux de toiture", "majorite": "24"}]}).json()
+    assert a2["points_ajoutes"] == [] and all(r["majorite"] != "info" for r in a2["resolutions"])
+    # Formulaire, dépouillement et PV acceptent le point sans vote
+    base = f"{AG}/2027-09-18"
+    assert c.get(f"{base}/formulaires/CP02", headers=H).status_code == 200
+    c.put(f"{base}/presences", headers=H, json={"presences": {"CP02": {"mode": "present"}, "CP03": {"mode": "present"}}})
+    dep = c.post(f"{base}/depouillement", headers=H, json={"votes": {}}).json()
+    assert dep["resolutions"][-1]["information"] and dep["resolutions"][-1]["adoptee"] is None
+    assert c.get(f"{base}/pv.pdf", headers=H).status_code == 200
+    # Fin de la location
+    assert c.put(f"{MT}/declarations/MT001", headers=H, json={"fin_le": "2027-06-01"}).status_code == 422
+    assert c.put(f"{MT}/declarations/MT001", headers=H, json={"fin_le": "2027-12-31"}).status_code == 200
+    assert c.get(MT, params={"au": "2028-01-15"}, headers=H).json()["actives"] == 0
+
+
+def test_meubles_tourisme_affichage_sans_nom():
+    from pypdf import PdfReader
+    import io
+    pdf = c.get(f"{MT}/affichage.pdf", params={"au": "2027-08-01"}, headers=H)
+    assert pdf.status_code == 200
+    texte = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "9-2" in texte and "Simon" not in texte and "lot 9" not in texte.lower()
+
+
+def test_meubles_tourisme_interdiction_conditions():
+    import copy
+    import meubles_tourisme as mt
+    r = c.get(f"{MT}/resolution", headers=H).json()
+    assert r["majorite"] == "26" and "résidence principale" in r["texte"] and "notaire" in r["texte"]
+    f = copy.deepcopy(FICHE)
+    f["reglement"]["activite_commerciale_interdite"] = False
+    assert mt.eligibilite(f)["verdict"] == "non"
+    f["reglement"]["activite_commerciale_interdite"] = None
+    assert mt.eligibilite(f)["verdict"] == "a_verifier"
+    assert mt.projet_resolution(f)["a_verifier"]
+    f["reglement"]["meubles_tourisme"] = "autorise"
+    assert mt.eligibilite(f)["verdict"] == "non"
+    import pytest
+    with pytest.raises(mt.DeclarationInvalide):
+        mt.projet_resolution(f)
+
+
+def test_passerelle_26_1():
+    import vote
+    voix = {"A": 300, "B": 300, "C": 200, "D": 200}                  # 4 membres, 1000 voix
+    # 2 pour sur 3 votants (la moitié au moins), 500 voix pour (au moins 1/3) mais pas 2/3 → second vote art. 25
+    d = vote.decompter({"A": "pour", "C": "pour", "B": "contre"}, voix, "26")
+    assert not d["adoptee"] and d["passerelle_26_1"]
+    # 1 pour sur 3 votants : moins de la moitié → pas de passerelle
+    assert not vote.decompter({"A": "pour", "B": "contre", "C": "contre"}, voix, "26")["passerelle_26_1"]
+    # moins d'un tiers des voix → pas de passerelle
+    assert not vote.decompter({"C": "pour", "D": "contre"}, {**voix, "A": 400, "B": 400}, "26")["passerelle_26_1"]

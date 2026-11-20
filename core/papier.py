@@ -361,7 +361,8 @@ def contenu_affiche(fiche: dict, racine: Path, copro: str, jour: date) -> dict:
         a = assemblee.charger_ag(racine, copro, passees[-1]["id"])
         dep = assemblee.depouiller(fiche, a, a["depouillement"]["votes"], a["depouillement"]["amendees"])
         decisions = {"date": date.fromisoformat(a["date"]),
-                     "resolutions": [(r["titre"], r["adoptee"]) for r in dep["resolutions"]]}
+                     "resolutions": [(r["titre"], r["adoptee"]) for r in dep["resolutions"]
+                                     if not r.get("information")]}
     chantiers, sondages = [], []
     for d in travaux.lister_dossiers(racine, copro):
         dossier = travaux.charger_dossier(travaux.dossier_dir(racine, copro, d["id"]))

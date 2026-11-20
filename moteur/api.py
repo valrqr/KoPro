@@ -64,6 +64,11 @@ Routes :
     GET  /copros/{copro}/ag/{id}/agenda.ics                 « ajouter à mon calendrier »
     GET  /copros/{copro}/ag/{id}/rappels?au=                rappel du jour (J-7, J-1) pour une AG
     GET  /rappels-ag?au=                                    tous les rappels du jour, un par destinataire (n8n)
+    GET  /copros/{copro}/meubles-tourisme?au=               registre des déclarations, interdiction possible ?
+    POST /copros/{copro}/meubles-tourisme/declarations      information reçue d'un propriétaire (art. 9-2)
+    PUT  /copros/{copro}/meubles-tourisme/declarations/{id} fin de la location touristique
+    GET  /copros/{copro}/meubles-tourisme/affichage.pdf     affiche pour les parties communes
+    GET  /copros/{copro}/meubles-tourisme/resolution        projet de résolution d'interdiction (art. 26 d)
     GET  /copros/{copro}/fiche-synthetique?au=              fiche synthétique (décret 2016-1822), données manquantes
     GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
     POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
@@ -102,6 +107,7 @@ import vente  # noqa: E402
 import banque  # noqa: E402
 import impayes  # noqa: E402
 import rappel_ag  # noqa: E402
+import meubles_tourisme  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -512,7 +518,7 @@ Coproprietaire = PathParam(..., pattern=ID_COPROPRIETAIRE)
 class ResolutionAG(BaseModel):
     titre: str = Field(..., min_length=3, max_length=200)
     texte: str = Field("", max_length=4000)
-    majorite: str = Field("24", description="24 | 25 | 26")
+    majorite: str = Field("24", description="24 | 25 | 26 | info (point d'information, sans vote)")
     cle: str = Field("generales", description="Clé de répartition : seuls les copropriétaires concernés votent")
 
 
@@ -562,12 +568,20 @@ def creer_ag(corps: NouvelleAG, copro: str = Copro) -> dict:
         if d is None:
             raise HTTPException(422, f"Dossier de travaux invalide : {did}")
         resolutions += assemblee.resolutions_depuis_dossier(d)
+    # Art. 9-2 : un point d'information sur les meublés de tourisme déclarés depuis la dernière AG
+    point_mt = meubles_tourisme.point_information(fiche, meubles_tourisme.charger(DOSSIER_DATA, copro), corps.date)
+    if point_mt:
+        resolutions.append({k: v for k, v in point_mt.items() if not k.startswith("_")})
     try:
         a = assemblee.creer_ag(DOSSIER_DATA, copro, fiche, corps.date, corps.heure, corps.lieu, resolutions,
                                corps.titre, corps.annuelle, corps.visio, corps.suffixe)
     except assemblee.AGInvalide as e:
         raise HTTPException(422, str(e))
-    return {**a, "calendrier": assemblee.calendrier(fiche, a)}
+    ajouts = []
+    if point_mt:
+        meubles_tourisme.marquer_inscrites(DOSSIER_DATA, copro, point_mt["_declarations"], a["id"])
+        ajouts.append("Point d'information sur les meublés de tourisme (loi 1965, art. 9-2), ajouté automatiquement")
+    return {**a, "calendrier": assemblee.calendrier(fiche, a), "points_ajoutes": ajouts}
 
 
 @app.get("/copros/{copro}/ag/{ag_id}", dependencies=[Depends(verifier_cle)])
@@ -1092,6 +1106,76 @@ def suivre_relance(corps: SuiviRelance, copro: str = Copro, rid: str = PathParam
                                corps.presentee_le)
     except impayes.RecouvrementInvalide as e:
         raise HTTPException(422, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Meublés de tourisme (loi Le Meur)
+# --------------------------------------------------------------------------- #
+ID_DECLARATION_MT = r"^MT\d{3}$"
+
+
+class DeclarationMT(BaseModel):
+    lot: int = Field(..., ge=1)
+    recue_le: date
+    informe_par: Literal["proprietaire", "locataire"] = "proprietaire"
+    residence_principale: bool | None = Field(None, description="Le logement est-il la résidence principale du loueur ?")
+    numero_enregistrement: str | None = Field(None, max_length=40, description="Numéro de déclaration en mairie")
+    debut: date | None = None
+
+
+@app.get("/copros/{copro}/meubles-tourisme", dependencies=[Depends(verifier_cle)])
+def meubles_tourisme_etat(copro: str = Copro, au: date | None = Query(None)) -> dict:
+    fiche = fiche_de(copro)
+    reg = meubles_tourisme.charger(DOSSIER_DATA, copro)
+    jour = au or date.today()
+    return {"declarations": reg, "actives": len(meubles_tourisme.actives(reg, jour)),
+            "a_presenter_en_ag": [d["id"] for d in reg if not d.get("inscrite_ag")],
+            "interdiction": meubles_tourisme.eligibilite(fiche)}
+
+
+@app.post("/copros/{copro}/meubles-tourisme/declarations", status_code=201, dependencies=[Depends(verifier_cle)])
+def meubles_tourisme_declarer(corps: DeclarationMT, copro: str = Copro) -> dict:
+    try:
+        d = meubles_tourisme.enregistrer(fiche_de(copro), DOSSIER_DATA, copro, corps.lot, corps.recue_le,
+                                         corps.informe_par, corps.residence_principale, corps.numero_enregistrement,
+                                         corps.debut)
+    except meubles_tourisme.DeclarationInvalide as e:
+        raise HTTPException(422, str(e))
+    return {**d, "a_faire": ["Le point d'information sera ajouté automatiquement à la prochaine AG que vous créerez.",
+                             f"Afficher l'information dans le hall : /copros/{copro}/meubles-tourisme/affichage.pdf"]}
+
+
+class FinMT(BaseModel):
+    fin_le: date
+
+
+@app.put("/copros/{copro}/meubles-tourisme/declarations/{did}", dependencies=[Depends(verifier_cle)])
+def meubles_tourisme_fin(corps: FinMT, copro: str = Copro, did: str = PathParam(..., pattern=ID_DECLARATION_MT)) -> dict:
+    try:
+        return meubles_tourisme.terminer(DOSSIER_DATA, copro, did, corps.fin_le)
+    except meubles_tourisme.DeclarationInvalide as e:
+        raise HTTPException(422, str(e))
+
+
+@app.get("/copros/{copro}/meubles-tourisme/affichage.pdf", dependencies=[Depends(verifier_cle)])
+def meubles_tourisme_affichage(copro: str = Copro, au: date | None = Query(None)) -> FileResponse:
+    fiche = fiche_de(copro)
+    jour = au or date.today()
+    futures = [a for a in assemblee.lister_ag(DOSSIER_DATA, copro) if a["date"] >= jour.isoformat() and not a["depouillee"]]
+    chemin = meubles_tourisme.generer_affichage(
+        fiche, meubles_tourisme.charger(DOSSIER_DATA, copro),
+        DOSSIER_SORTIE / copro / "affichage" / f"meubles_tourisme_{jour:%Y%m%d}.pdf", jour,
+        date.fromisoformat(futures[0]["date"]) if futures else None)
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+@app.get("/copros/{copro}/meubles-tourisme/resolution", dependencies=[Depends(verifier_cle)])
+def meubles_tourisme_resolution(copro: str = Copro) -> dict:
+    """Projet de résolution, à utiliser si un copropriétaire demande l'inscription de la question."""
+    try:
+        return meubles_tourisme.projet_resolution(fiche_de(copro))
+    except meubles_tourisme.DeclarationInvalide as e:
+        raise HTTPException(409, str(e))
 
 
 # --------------------------------------------------------------------------- #

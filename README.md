@@ -22,6 +22,7 @@ Un assistant open source pour les syndics **bénévoles et coopératifs** de cop
 | **Vote** | Sondage consultatif en ligne ou sur papier, vote du conseil syndical, dépouillement selon les majorités de la loi de 1965 | [Travaux et vote](docs/travaux-et-vote.md) |
 | **Plan de travaux vivant** | Projection du fonds de travaux sur 10 ans, minimum légal, cotisation lissée, ce que chacun paiera et quand | [Plan de travaux](docs/plan-de-travaux.md) |
 | **Assemblée générale** | Calendrier légal, formulaires de vote par correspondance, rappels avec ajout à l'agenda, mandats, feuille de présence, brouillon de procès-verbal | [Assemblée générale](docs/assemblee-generale.md) |
+| **Meublés de tourisme** | Registre des déclarations, point d'information ajouté à l'AG, affiche du hall, projet de résolution si une interdiction est demandée (loi Le Meur) | [Meublés de tourisme](docs/meubles-tourisme.md) |
 | **Impayés** | Import du relevé bancaire, rapprochement automatique des paiements, relances graduées jusqu'à la mise en demeure, jamais sans validation du syndic | [Impayés](docs/impayes.md) |
 | **Dossier de vente** | Quand un lot est vendu : fiche synthétique, pré-état daté, plan de travaux et bordereau des documents exigés par la loi, en une archive pour le notaire | [Dossier de vente](docs/dossier-de-vente.md) |
 | **Pack papier** | Courrier, grands caractères, talon de chèque, bulletin papier, affiche du hall : personne n'est laissé de côté | [Pack papier](docs/pack-papier.md) |

@@ -101,3 +101,13 @@ Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante
 | POST | `/copros/{copro}/relances/{cid}?au=` | Prépare la relance proposée (409 si ce n'est pas le moment) |
 | GET | `/copros/{copro}/relances/{id}.pdf` | La lettre |
 | PUT | `/copros/{copro}/relances/{id}` | Marque la relance envoyée (date, moyen, date de présentation du recommandé) ou annulée |
+
+## Meublés de tourisme
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/copros/{copro}/meubles-tourisme?au=` | Registre des déclarations, lots à présenter en AG, conditions d'une interdiction |
+| POST | `/copros/{copro}/meubles-tourisme/declarations` | Information reçue d'un propriétaire (art. 9-2) ; le point d'AG s'ajoute à la prochaine AG créée |
+| PUT | `/copros/{copro}/meubles-tourisme/declarations/{id}` | Fin de la location touristique |
+| GET | `/copros/{copro}/meubles-tourisme/affichage.pdf?au=` | Affiche pour les parties communes, sans nom ni numéro de lot |
+| GET | `/copros/{copro}/meubles-tourisme/resolution` | Projet de résolution d'interdiction (art. 26 d), si les conditions le permettent |

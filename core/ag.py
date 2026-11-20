@@ -48,7 +48,8 @@ import vote
 
 MAJORITES = {"24": "Article 24 (majorité des voix exprimées)",
              "25": "Article 25 (majorité des voix de tous les copropriétaires)",
-             "26": "Article 26 (double majorité)"}
+             "26": "Article 26 (double majorité)",
+             "info": "Point d'information, sans vote"}
 CHOIX = ("pour", "contre", "abstention")
 MODES_PRESENCE = ("present", "visio", "represente")
 DELAI_CONVOCATION_JOURS = 21
@@ -166,7 +167,7 @@ def _valider_resolutions(fiche: dict, resolutions: list[dict]) -> list[dict]:
             raise AGInvalide(f"Résolution {i} : titre obligatoire")
         maj = str(r.get("majorite", "24"))
         if maj not in MAJORITES:
-            raise AGInvalide(f"Résolution {i} : majorité {maj} inconnue (24, 25 ou 26)")
+            raise AGInvalide(f"Résolution {i} : majorité {maj} inconnue (24, 25, 26 ou info)")
         cle = r.get("cle", "generales")
         if cle not in fiche["cles_repartition"]:
             raise AGInvalide(f"Résolution {i} : clé de répartition inconnue {cle}")
@@ -207,8 +208,8 @@ def ordre_du_jour_type(fiche: dict, plan_adopte: bool = False) -> list[dict]:
     ]
     if fiche.get("plan_travaux") and not plan_adopte:
         odj.append({"titre": "Présentation du projet de plan pluriannuel de travaux",
-                    "texte": "Point d'information : le projet est présenté avant son éventuelle adoption.",
-                    "majorite": "24"})
+                    "texte": "Le projet est présenté avant son éventuelle adoption.",
+                    "majorite": "info"})
     return odj
 
 
@@ -378,6 +379,11 @@ def depouiller(fiche: dict, ag: dict, votes_seance: dict, amendees: list[int] | 
         return b, defaillants, sans_choix
 
     for r in ag["resolutions"]:
+        if r["majorite"] == "info":
+            resultats.append({**{k: r[k] for k in ("num", "titre", "majorite", "cle")}, "information": True,
+                              "amendee": False, "decompte": None, "adoptee": None, "opposants": [],
+                              "abstentionnistes": [], "defaillants_17_1_A": [], "formulaires_sans_choix": []})
+            continue
         voix = vote.electorat(fiche, r["cle"])
         saisie = (votes_seance or {}).get(r["num"]) or (votes_seance or {}).get(str(r["num"])) or {}
         b, defaillants, sans_choix = bulletins_pour(r, saisie, voix)
@@ -400,6 +406,18 @@ def depouiller(fiche: dict, ag: dict, votes_seance: dict, amendees: list[int] | 
             else:
                 res["note"] = ("La résolution a recueilli au moins un tiers des voix : l'AG peut procéder "
                                "immédiatement à un second vote à la majorité de l'article 24 (art. 25-1).")
+        if r["majorite"] == "26" and not d["adoptee"] and d.get("passerelle_26_1"):
+            second = saisie.get("second_vote_25")
+            if second is not None:
+                b2, _, _ = bulletins_pour(r, second, voix)
+                d2 = vote.decompter(b2, voix, "25")
+                res["second_vote_25"] = {"decompte": d2, "adoptee": d2["adoptee"],
+                                         "note": "Second vote immédiat à la majorité de l'article 25 (art. 26-1). "
+                                                 "Les votes par correspondance y sont repris tels quels : à vérifier."}
+                res["adoptee"] = d2["adoptee"]
+            else:
+                res["note"] = ("La moitié des votants, représentant au moins un tiers des voix, a approuvé : l'AG "
+                               "peut procéder immédiatement à un second vote à la majorité de l'article 25 (art. 26-1).")
         if r.get("dossier"):
             if res["adoptee"] and r["dossier"] not in retenu_par_dossier:
                 retenu_par_dossier[r["dossier"]] = r["num"]
@@ -499,6 +517,10 @@ def generer_formulaire(fiche: dict, ag: dict, cid: str, chemin: Path) -> Path:
         cle = ("" if r["cle"] == "generales"
                else f"<br/><font size='8' color='#5C5C5C'>Vote des seuls copropriétaires concernés "
                     f"({_e(fiche['cles_repartition'][r['cle']]['libelle'].lower())})</font>")
+        if r["majorite"] == "info":
+            lignes.append([f"Point n° {r['num']}", Paragraph(f"{_e(r['titre'])}<br/><font size='8' color='#5C5C5C'>"
+                                                              f"{MAJORITES['info']}</font>", S["txt"]), "", "—", ""])
+            continue
         lignes.append([f"Résolution n° {r['num']}",
                        Paragraph(f"{_e(r['titre'])}<br/><font size='8' color='#5C5C5C'>{MAJORITES[r['majorite']]}</font>{cle}",
                                  S["txt"]), _case(), _case(), _case()])
@@ -596,6 +618,16 @@ def generer_pv(fiche: dict, ag: dict, dep: dict, chemin: Path) -> Path:
          Spacer(1, 5 * mm)]
     liste = lambda ps: ", ".join(f"{_e(p['nom'])} ({p['voix']})" for p in ps) or "aucun"
     for r in dep["resolutions"]:
+        if r.get("information"):
+            src = next((x for x in ag["resolutions"] if x["num"] == r["num"]), {})
+            corps = (f"<b>Point n° {r['num']} — {_e(r['titre'])}</b><br/>{MAJORITES['info']}"
+                     + (f"<br/>{_e(src['texte'])}" if src.get("texte") else "")
+                     + "<br/>Résumé des échanges : ..............................................................")
+            bloc = Table([[Paragraph(corps, S["txt"])]], colWidths=[174 * mm])
+            bloc.setStyle(TableStyle([("LINEBEFORE", (0, 0), (0, -1), 2.5, GRIS), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                                      ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+            h += [KeepTogether([bloc]), Spacer(1, 3 * mm)]
+            continue
         dc = r["decompte"]
         statut = "ADOPTÉE" if r["adoptee"] else "REJETÉE"
         if r.get("retenue") is False:
@@ -616,6 +648,8 @@ def generer_pv(fiche: dict, ag: dict, dep: dict, chemin: Path) -> Path:
                     if r["formulaires_sans_choix"] else "")
                  + (f"<br/>Second vote à la majorité de l'article 24 : pour {r['second_vote_24']['decompte']['pour']}, "
                     f"contre {r['second_vote_24']['decompte']['contre']} voix" if r.get("second_vote_24") else "")
+                 + (f"<br/>Second vote à la majorité de l'article 25 : pour {r['second_vote_25']['decompte']['pour']} "
+                    f"voix sur {r['second_vote_25']['decompte']['total_voix']}" if r.get("second_vote_25") else "")
                  + (f"<br/><i>{_e(r['note'])}</i>" if r.get("note") else "")
                  + f"<br/><b>{statut}</b>")
         bloc = Table([[Paragraph(corps, S["txt"])]], colWidths=[174 * mm])

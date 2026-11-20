@@ -72,7 +72,7 @@ def decompter(bulletins: dict[str, str], voix: dict[str, int], majorite: str = "
     res = {"majorite": majorite, "pour": pour, "contre": contre, "abstention": abst,
            "absents": total - pour - contre - abst, "total_voix": total,
            "votants": len(bulletins), "nb_pour": nb_pour, "nb_coproprietaires": nb_membres,
-           "passerelle_25_1": False}
+           "passerelle_25_1": False, "passerelle_26_1": False}
     if majorite == "24":
         res["adoptee"] = pour > contre
         res["regle"] = f"Pour ({pour}) > Contre ({contre}) — abstentions et absents non comptés"
@@ -87,6 +87,13 @@ def decompter(bulletins: dict[str, str], voix: dict[str, int], majorite: str = "
         res["adoptee"] = nb_pour * 2 > nb_membres and pour * 3 >= total * 2
         res["regle"] = (f"{nb_pour} copropriétaires pour sur {nb_membres} (majorité requise) "
                         f"et {pour} voix pour sur {total} (2/3 requis)")
+        # Art. 26-1 : approuvé par la moitié des membres présents, représentés ou ayant voté par
+        # correspondance, représentant au moins le tiers des voix de tous → second vote immédiat
+        # à la majorité de l'article 25.
+        if not res["adoptee"] and len(bulletins) and nb_pour * 2 >= len(bulletins) and pour * 3 >= total:
+            res["passerelle_26_1"] = True
+            res["regle"] += (" — non atteinte, mais la moitié des votants représentant au moins 1/3 des voix : "
+                             "un second vote immédiat à la majorité de l'article 25 est possible (art. 26-1)")
     return res
 
 

@@ -177,6 +177,16 @@ comptes_approuves:
   nb_debiteurs_plus_300: 1              # copropriétaires débiteurs de plus de 300 €
   fonds_travaux: 5600.00                # montant du fonds de travaux à la clôture
 
+# Ce que dit le règlement de copropriété (à recopier du règlement, pas à deviner)
+reglement:
+  # Le règlement interdit-il toute activité commerciale dans les lots qui ne sont pas
+  # spécifiquement à destination commerciale ? true | false | null (pas encore vérifié).
+  # Condition pour pouvoir voter une interdiction des meublés de tourisme (loi 1965, art. 26).
+  activite_commerciale_interdite: true
+  # Position du règlement sur les meublés de tourisme : autorise | interdit | non_precise.
+  # Les règlements établis depuis le 21/11/2024 doivent la préciser (loi 1965, art. 8-1-1).
+  meubles_tourisme: non_precise
+
 # Recouvrement des impayés (facultatif : valeurs par défaut ci-dessous)
 recouvrement:
   seuil: 5                        # € : en dessous, pas de relance
