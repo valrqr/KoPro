@@ -75,6 +75,7 @@ Routes :
     GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
     POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
     GET  /copros/{copro}/ventes/{id}.zip                    archive du dossier, prête à transmettre au notaire
+    POST /copros/{copro}/transmission                       dossier de transfert vers un autre syndic (ZIP, art. 18-2)
     GET  /vote/{copro}/{id}/{s}/{jeton}                     page de vote d'un copropriétaire (sans clé d'API)
 
 Sécurité : chaque requête doit porter l'en-tête  X-API-Key: <MOTEUR_TOKEN>.
@@ -117,6 +118,7 @@ import meubles_tourisme  # noqa: E402
 import nouvel_arrivant  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
+import transmission  # noqa: E402
 import vote  # noqa: E402
 
 from . import page_vote  # noqa: E402
@@ -1281,6 +1283,35 @@ def zip_dossier_vente(copro: str = Copro, vente_id: str = PathParam(..., pattern
     if not chemin.is_file():
         raise HTTPException(404, "Dossier de vente introuvable")
     return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
+
+
+def preparer_transmission(copro: str, formulaire: dict, jour: date | None = None) -> dict:
+    """Dossier de transfert vers un autre syndic : bordereau, état des comptes, tableaux CSV, archives."""
+    jour = jour or date.today()
+    fiche = fiche_de(copro)
+    p = transmission.parametres(formulaire)
+    e = impayes.etat(fiche, DOSSIER_SORTIE, DOSSIER_DATA, copro, jour)
+    return transmission.generer(fiche, p, e, impayes.charger_relances(DOSSIER_DATA, copro), DOSSIER_DATA,
+                                DOSSIER_SORTIE, copro, DOSSIER_SORTIE / copro / "transmission" / f"{jour:%Y%m%d}", jour)
+
+
+class CorpsTransmission(BaseModel):
+    successeur: str = Field(..., min_length=1, max_length=120)
+    successeur_adresse: str = Field("", max_length=300)
+    cessation: date
+    date_soldes: date | None = None
+    solde_courant: Decimal | None = None
+    solde_fonds_travaux: Decimal | None = None
+
+
+@app.post("/copros/{copro}/transmission", dependencies=[Depends(verifier_cle)])
+def creer_transmission(corps: CorpsTransmission, copro: str = Copro) -> FileResponse:
+    form = {k: ("" if v is None else str(v)) for k, v in corps.model_dump().items()}
+    try:
+        r = preparer_transmission(copro, form)
+    except transmission.TransmissionInvalide as ex:
+        raise HTTPException(422, str(ex))
+    return FileResponse(r["chemin"], media_type="application/zip", filename=r["archive"])
 
 
 @app.get("/vote/{copro}/{dossier_id}/{sid}/{jeton}", response_class=HTMLResponse, include_in_schema=False)

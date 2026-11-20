@@ -1388,3 +1388,55 @@ def test_reglement_decoupage():
     assert a[1]["titre"] == "Destination" and "Article 1 ci-dessus." in a[1]["texte"]
     assert a[2]["titre"] == "Animaux" and a[2]["texte"] == "Trois."
     assert reglement._normaliser("Les  chiens\n doivent") == "les chiens doivent"
+
+
+def test_transmission_vers_un_autre_syndic():
+    import csv
+    import io
+    import zipfile
+    from pypdf import PdfReader
+    # Une archive à transmettre, un relevé et des appels existent déjà (tests précédents ou fichiers posés ici)
+    note = Path(os.environ["MOTEUR_DATA_DIR"]) / "mimosas" / "carnet" / "note.txt"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("Visite de l'ascensoriste le 2 mars.", encoding="utf-8")
+    c.post(BASE, params={"final": "true"}, headers=H)
+    corps = {"successeur": "Cabinet Exemple Gestion", "cessation": "2027-06-30", "solde_courant": "12450.30",
+             "solde_fonds_travaux": "7100"}
+    r = c.post("/copros/mimosas/transmission", json=corps, headers=H)
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    noms = set(z.namelist())
+    assert {"LISEZMOI.txt", "00_bordereau.pdf", "01_etat_des_comptes.pdf", "donnees/coproprietaires.csv",
+            "donnees/lots.csv", "donnees/comptes_coproprietaires.csv", "donnees/fiche_copropriete.yaml",
+            "archives/data/carnet/note.txt"} <= noms
+    assert any(n.startswith("archives/documents_produits/2027-T1/avis_") for n in noms)
+    assert not any("transmission" in n for n in noms)         # pas d'archive dans l'archive
+    lots = list(csv.DictReader(io.StringIO(z.read("donnees/lots.csv").decode("utf-8-sig")), delimiter=";"))
+    assert len(lots) == 24 and lots[0]["tantiemes_generales"] == "450"
+    copros = list(csv.DictReader(io.StringIO(z.read("donnees/coproprietaires.csv").decode("utf-8-sig")), delimiter=";"))
+    assert len(copros) == 14 and copros[0]["email"]
+    t = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(z.read("00_bordereau.pdf"))).pages)
+    assert "Dossier de transfert" in t and "Cabinet Exemple Gestion" in t and "12 450,30" in t and "18-2" in t
+    assert "FR76" in t and "Assurance multirisque immeuble" in t
+    # Saisies refusées
+    assert c.post("/copros/mimosas/transmission", json={**corps, "successeur": ""}, headers=H).status_code == 422
+    assert c.post("/copros/mimosas/transmission", json=corps).status_code == 401
+
+    # Interface : page, préparation, téléchargement
+    n = _navigateur()
+    n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
+    assert "Changer de syndic" in n.get("/app/mimosas/documents").text
+    assert "Transmettre la copropriété" in n.get("/app/mimosas/transmission").text
+    page = n.post("/app/mimosas/transmission", data={"successeur": "Mme Rossi", "cessation": "2027-07-01",
+                                                      "solde_courant": "abc"}).text
+    assert "pas un montant" in page and 'value="Mme Rossi"' in page
+    r = n.post("/app/mimosas/transmission", data={"successeur": "Mme Rossi", "cessation": "2027-07-01"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    page = n.get("/app/mimosas/transmission").text
+    assert "Dossiers déjà préparés" in page and "Mme Rossi" in page
+    import re as _re
+    lien = _re.search(r'href="(/app/mimosas/transmission/\d{8}/dossier_transfert_mimosas_\d{8}\.zip)"', page).group(1)
+    assert n.get(lien).content[:2] == b"PK"
+    assert n.get("/app/mimosas/transmission/20270101/autre.zip").status_code == 404
+    assert _navigateur().get(lien, follow_redirects=False).status_code == 303

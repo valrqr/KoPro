@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Transmettre la copropriété</h1>
+<p class="chapeau">Si l'assemblée générale choisit un autre syndic, professionnel ou bénévole, la copropriété part avec
+  tout : comptes, archives, documents produits, dans des formats ouverts. Aucun logiciel particulier n'est nécessaire
+  pour reprendre la gestion.</p>
+
+{% if erreur %}<p class="erreur">{{ erreur }}</p>{% endif %}
+
+<div class="colonnes">
+<section>
+<form method="post" action="/app/{{ copro }}/transmission" class="formulaire" style="display:grid;gap:1rem">
+  <label>Nouveau syndic <input type="text" name="successeur" required maxlength="120" value="{{ f.successeur or '' }}"
+    placeholder="Cabinet, ou nom du copropriétaire élu"></label>
+  <label>Son adresse <span class="discret">facultatif</span>
+    <textarea name="successeur_adresse" rows="2" maxlength="300">{{ f.successeur_adresse or '' }}</textarea></label>
+  <label>Fin de vos fonctions <input type="date" name="cessation" required value="{{ f.cessation or '' }}"></label>
+  <fieldset style="border:1px solid var(--filet);border-radius:var(--rayon);padding:.8rem 1rem;display:grid;gap:.8rem">
+    <legend style="font-weight:600;padding:0 .3rem">Situation de trésorerie, d'après le relevé bancaire</legend>
+    <label>Solde du compte courant <input type="text" inputmode="decimal" name="solde_courant" value="{{ f.solde_courant or '' }}"></label>
+    <label>Solde du compte du fonds de travaux <input type="text" inputmode="decimal" name="solde_fonds_travaux" value="{{ f.solde_fonds_travaux or '' }}"></label>
+    <label>Date du relevé <span class="discret">par défaut, la fin de vos fonctions</span> <input type="date" name="date_soldes" value="{{ f.date_soldes or '' }}"></label>
+  </fieldset>
+  <div class="actions"><button type="submit">Préparer le dossier de transfert</button></div>
+</form>
+</section>
+<aside>
+  <h2 style="margin-top:0">Ce que contient le dossier</h2>
+  <ul class="discret" style="padding-left:1.1rem;line-height:1.6">
+    <li>Un bordereau à signer par les deux syndics : trésorerie, comptes bancaires{% if compte.iban %} ({{ compte.iban[:4] }}…{{ compte.iban[-4:] }}){% endif %}, contrats et travaux en cours</li>
+    <li>L'état des comptes de chaque copropriétaire</li>
+    <li>Les tableaux en CSV : copropriétaires, lots et tantièmes, appels de fonds, opérations bancaires, relances, contrats, diagnostics, budget</li>
+    <li>La fiche complète de la copropriété</li>
+    <li>Toutes les archives : AG, devis, relevés, règlement, documents produits</li>
+  </ul>
+  <p class="discret">La loi fixe les délais de remise (article 18-2 de la loi du 10 juillet 1965) : trésorerie et
+    références bancaires sous 15 jours, archives sous un mois, solde des fonds et état des comptes dans les deux mois
+    suivants. Le dossier contient des données personnelles : ne le transmettez qu'au nouveau syndic.</p>
+</aside>
+</div>
+
+{% if precedents %}
+<h2>Dossiers déjà préparés</h2>
+<table class="table">
+  <thead><tr><th>Préparé le</th><th>Pour</th><th>Fin des fonctions</th><th class="nombre">Archives</th><th></th></tr></thead>
+  <tbody>
+  {% for p in precedents %}
+  <tr><td>{{ p.le|date_fr }}</td><td>{{ p.successeur }}</td><td>{{ p.cessation|date_fr }}</td>
+    <td class="nombre">{{ p.fichiers_archives }} fichiers</td>
+    <td><a class="bouton secondaire" href="/app/{{ copro }}/transmission/{{ p.dossier }}/{{ p.archive[:-4] }}.zip">Télécharger (ZIP)</a></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

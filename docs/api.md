@@ -89,6 +89,12 @@ L'interface web du syndic est servie sous `/app` (voir [interface.md](interface.
 | POST | `/copros/{copro}/ventes` | Dossier de vente d'un ou plusieurs lots d'un même vendeur : bordereau, PDF, archive |
 | GET | `/copros/{copro}/ventes/{id}.zip` | Archive du dossier, à transmettre au notaire |
 
+## Changer de syndic
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/copros/{copro}/transmission` | Dossier de transfert vers un autre syndic (ZIP). Corps JSON : `successeur`, `successeur_adresse`, `cessation`, et facultatifs `date_soldes`, `solde_courant`, `solde_fonds_travaux` |
+
 ## Impayés
 
 | Méthode | Route | Rôle |

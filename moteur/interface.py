@@ -16,13 +16,15 @@ Les écrans de séance d'AG sur tablette et le suivi de chantier relèvent du d�
 from __future__ import annotations
 
 import hmac
+import json
 import os
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -694,6 +696,43 @@ def documents_vente(request: Request, copro: str, lots: list[int] = Form(...)):
     a_completer = len(r["a_completer"])
     return retour(f"/app/{copro}/documents#vente", "Dossier de vente prêt"
                   + (f", {a_completer} rubrique(s) à compléter d'après vos comptes." if a_completer else "."), request)
+
+
+@routeur.get("/{copro}/transmission", response_class=HTMLResponse)
+def transmission_page(request: Request, copro: str, erreur: str | None = None, form: dict | None = None):
+    exiger(request, copro)
+    fiche = A.fiche_de(copro)
+    base = A.DOSSIER_SORTIE / copro / "transmission"
+    precedents = []
+    for f in sorted(base.glob("*/transmission.json"), reverse=True):
+        r = json.loads(f.read_text(encoding="utf-8"))
+        precedents.append({**r, "dossier": f.parent.name})
+    cs = (fiche.get("appels_de_fonds") or {}).get("compte_separe") or {}
+    return page(request, "transmission.html", copro, onglet="documents", precedents=precedents, erreur=erreur, f=form or {},
+                compte=cs, fonds_travaux=fiche.get("fonds_travaux") or {})
+
+
+@routeur.post("/{copro}/transmission")
+async def transmission_creer(request: Request, copro: str):
+    exiger(request, copro)
+    form = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
+    try:
+        r = A.preparer_transmission(copro, form, aujourdhui(request))
+    except A.transmission.TransmissionInvalide as e:
+        return transmission_page(request, copro, erreur=str(e), form=form)
+    return retour(f"/app/{copro}/transmission", f"Dossier de transfert prêt ({r['fichiers_archives']} fichiers "
+                  "d'archives).", request)
+
+
+@routeur.get("/{copro}/transmission/{dossier}/{nom}.zip")
+def transmission_zip(request: Request, copro: str, dossier: str, nom: str):
+    exiger(request, copro)
+    if not re.fullmatch(r"\d{8}", dossier) or not re.fullmatch(r"dossier_transfert_[a-z0-9_-]+_\d{8}", nom):
+        raise HTTPException(404)
+    chemin = A.DOSSIER_SORTIE / copro / "transmission" / dossier / f"{nom}.zip"
+    if not chemin.is_file():
+        raise HTTPException(404)
+    return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
 
 
 @routeur.post("/{copro}/documents/meubles-tourisme")
