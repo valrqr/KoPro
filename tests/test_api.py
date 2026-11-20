@@ -1141,3 +1141,50 @@ def test_passerelle_26_1():
     assert not vote.decompter({"A": "pour", "B": "contre", "C": "contre"}, voix, "26")["passerelle_26_1"]
     # moins d'un tiers des voix → pas de passerelle
     assert not vote.decompter({"C": "pour", "D": "contre"}, {**voix, "A": 400, "B": 400}, "26")["passerelle_26_1"]
+
+
+# --------------------------------------------------------------------------- #
+# Pack nouvel arrivant
+# --------------------------------------------------------------------------- #
+def _pages_et_texte(contenu: bytes) -> tuple[int, str]:
+    import io
+    from pypdf import PdfReader
+    r = PdfReader(io.BytesIO(contenu))
+    return len(r.pages), "".join(p.extract_text() for p in r.pages)
+
+
+def test_bienvenue_proprietaire():
+    r = c.get("/copros/mimosas/bienvenue/proprietaire.pdf", headers=H,
+              params={"lots": [2, 21], "nom": "Nouveau Propriétaire", "au": "2027-02-10"})
+    assert r.status_code == 200, r.text
+    pages, texte = _pages_et_texte(r.content)
+    assert pages == 4                                              # guide (2), fiche synthétique, bulletin
+    assert "1 308,00" in texte and "01/04/2027" in texte          # charges annuelles, prochaine échéance
+    assert "Fiche synthétique" in texte and "Bulletin de choix" in texte
+    assert "2025-1292" in texte and "prélèvement automatique" in texte
+    assert "Durand Camille" in texte                               # le syndic
+    assert "Bernard" not in texte                                  # jamais le nom de l'ancien propriétaire
+    assert "Page 1 sur 1" in texte                                 # chaque document a sa propre numérotation
+    grand = c.get("/copros/mimosas/bienvenue/proprietaire.pdf", headers=H,
+                  params={"lots": [2], "nom": "Nouveau Propriétaire", "grand": "true"})
+    assert grand.status_code == 200
+    # Lots de deux propriétaires différents, lot inconnu, nom manquant
+    assert c.get("/copros/mimosas/bienvenue/proprietaire.pdf", headers=H,
+                 params={"lots": [1, 2], "nom": "X Y"}).status_code == 422
+    assert c.get("/copros/mimosas/bienvenue/proprietaire.pdf", headers=H,
+                 params={"lots": [99], "nom": "X Y"}).status_code == 422
+    assert c.get("/copros/mimosas/bienvenue/proprietaire.pdf", headers=H, params={"lots": [2]}).status_code == 422
+
+
+def test_bienvenue_locataire():
+    import nouvel_arrivant
+    r = c.get("/copros/mimosas/bienvenue/locataire.pdf", headers=H, params={"lots": [9]})
+    assert r.status_code == 200
+    pages, texte = _pages_et_texte(r.content)
+    assert pages == 1 and "89-462" in texte and "Votre bailleur" in texte
+    assert "4,50 %" in texte and "5,50 %" in texte                 # quotes-parts du lot 9 : 450/10000, 55/1000
+    assert "Simon" not in texte                                    # ni le bailleur ni le locataire ne sont nommés
+    qp = {q["cle"]: q["pourcentage"] for q in nouvel_arrivant.quotes_parts(FICHE, [9])}
+    assert str(qp["generales"]) == "4.50" and str(qp["ascenseur"]) == "5.50"
+    assert c.get("/copros/mimosas/bienvenue/locataire.pdf", headers=H, params={"lots": [17]}).status_code == 422
+    assert c.get("/copros/mimosas/bienvenue/locataire.pdf", params={"lots": [9]}).status_code == 401

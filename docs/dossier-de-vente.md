@@ -39,4 +39,8 @@ La réponse donne le bordereau, ce qui reste à compléter et le lien de l'archi
 
 La fiche synthétique doit aussi être tenue à jour chaque année, dans les deux mois qui suivent l'AG qui approuve les comptes, et mise à disposition de chaque copropriétaire. `GET /copros/{copro}/fiche-synthetique.pdf` la produit à tout moment ; il suffit de mettre à jour la section `comptes_approuves` de la fiche après l'AG.
 
+## Après la vente
+
+L'acquéreur reçoit son [pack de bienvenue](nouvel-arrivant.md) : guide, fiche synthétique et bulletin de choix (mail ou courrier, prélèvement, proche aidant), préparés à partir des mêmes numéros de lots.
+
 > Aide à la préparation. L'état daté établi au moment de la vente reste à la charge du syndic, et le notaire vérifie le dossier. Mitoyen ne donne pas de conseil juridique : en cas de doute, l'ADIL de votre département répond gratuitement.

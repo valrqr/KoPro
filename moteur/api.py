@@ -69,6 +69,8 @@ Routes :
     PUT  /copros/{copro}/meubles-tourisme/declarations/{id} fin de la location touristique
     GET  /copros/{copro}/meubles-tourisme/affichage.pdf     affiche pour les parties communes
     GET  /copros/{copro}/meubles-tourisme/resolution        projet de résolution d'interdiction (art. 26 d)
+    GET  /copros/{copro}/bienvenue/proprietaire.pdf?lots=&nom=  pack nouvel arrivant (guide, fiche synthétique, bulletin)
+    GET  /copros/{copro}/bienvenue/locataire.pdf?lots=      pack locataire, remis par le bailleur
     GET  /copros/{copro}/fiche-synthetique?au=              fiche synthétique (décret 2016-1822), données manquantes
     GET  /copros/{copro}/fiche-synthetique.pdf?au=          la même, en PDF
     POST /copros/{copro}/ventes                             dossier de vente d'un ou plusieurs lots (bordereau, PDF, ZIP)
@@ -108,6 +110,7 @@ import banque  # noqa: E402
 import impayes  # noqa: E402
 import rappel_ag  # noqa: E402
 import meubles_tourisme  # noqa: E402
+import nouvel_arrivant  # noqa: E402
 import resume_ia  # noqa: E402
 import travaux  # noqa: E402
 import vote  # noqa: E402
@@ -1176,6 +1179,37 @@ def meubles_tourisme_resolution(copro: str = Copro) -> dict:
         return meubles_tourisme.projet_resolution(fiche_de(copro))
     except meubles_tourisme.DeclarationInvalide as e:
         raise HTTPException(409, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Pack nouvel arrivant
+# --------------------------------------------------------------------------- #
+Lots = Query(..., min_length=1, max_length=20, description="Numéros des lots (répéter le paramètre)")
+
+
+@app.get("/copros/{copro}/bienvenue/proprietaire.pdf", dependencies=[Depends(verifier_cle)])
+def bienvenue_proprietaire(copro: str = Copro, lots: list[int] = Lots,
+                           nom: str = Query(..., min_length=2, max_length=80),
+                           grand: bool = Query(False, description="Grands caractères"),
+                           au: date | None = Query(None)) -> FileResponse:
+    jour = au or date.today()
+    chemin = DOSSIER_SORTIE / copro / "bienvenue" / f"bienvenue_{jour:%Y%m%d}_lots_{'-'.join(map(str, sorted(lots)))}.pdf"
+    try:
+        nouvel_arrivant.pack_proprietaire(fiche_de(copro), lots, nom, chemin, DOSSIER_DATA, copro, jour, grand)
+    except nouvel_arrivant.PackInvalide as e:
+        raise HTTPException(422, str(e))
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
+
+
+@app.get("/copros/{copro}/bienvenue/locataire.pdf", dependencies=[Depends(verifier_cle)])
+def bienvenue_locataire(copro: str = Copro, lots: list[int] = Lots,
+                        grand: bool = Query(False, description="Grands caractères")) -> FileResponse:
+    chemin = DOSSIER_SORTIE / copro / "bienvenue" / f"locataire_lots_{'-'.join(map(str, sorted(lots)))}.pdf"
+    try:
+        nouvel_arrivant.pack_locataire(fiche_de(copro), lots, chemin, DOSSIER_DATA, copro, grand=grand)
+    except nouvel_arrivant.PackInvalide as e:
+        raise HTTPException(422, str(e))
+    return FileResponse(chemin, media_type="application/pdf", filename=chemin.name)
 
 
 # --------------------------------------------------------------------------- #

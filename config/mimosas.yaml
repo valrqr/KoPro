@@ -177,6 +177,17 @@ comptes_approuves:
   nb_debiteurs_plus_300: 1              # copropriétaires débiteurs de plus de 300 €
   fonds_travaux: 5600.00                # montant du fonds de travaux à la clôture
 
+# Vie de l'immeuble : les informations pratiques du pack nouvel arrivant. Ce ne sont
+# pas des règles : en cas de doute, le règlement de copropriété fait foi. Ne jamais
+# écrire ici un code d'accès (digicode, boîte à clés) : le pack peut circuler.
+vie_immeuble:
+  - { theme: "Ordures ménagères", texte: "Les bacs sont dans le local poubelles du rez-de-chaussée. Verre et cartons pliés dans les bacs de tri." }
+  - { theme: "Encombrants", texte: "Rien dans les parties communes ni au sous-sol : la ville les enlève gratuitement sur rendez-vous." }
+  - { theme: "Tranquillité", texte: "Travaux bruyants en semaine de 8h à 19h et le samedi de 9h à 18h. Le hall et l'escalier ne sont pas des lieux de stockage." }
+  - { theme: "Vélos et poussettes", texte: "Un local vélos est au sous-sol, à côté des caves." }
+  - { theme: "Jardin", texte: "Le jardin est commun à tous les résidents. Pas de barbecue." }
+  - { theme: "En cas d'urgence", texte: "Panne d'ascenseur, fuite dans les parties communes : prévenir le syndic. Dans votre logement, appelez d'abord votre assureur (et votre bailleur si vous êtes locataire)." }
+
 # Ce que dit le règlement de copropriété (à recopier du règlement, pas à deviner)
 reglement:
   # Le règlement interdit-il toute activité commerciale dans les lots qui ne sont pas

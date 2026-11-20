@@ -24,6 +24,7 @@ Un assistant open source pour les syndics **bénévoles et coopératifs** de cop
 | **Assemblée générale** | Calendrier légal, formulaires de vote par correspondance, rappels avec ajout à l'agenda, mandats, feuille de présence, brouillon de procès-verbal | [Assemblée générale](docs/assemblee-generale.md) |
 | **Meublés de tourisme** | Registre des déclarations, point d'information ajouté à l'AG, affiche du hall, projet de résolution si une interdiction est demandée (loi Le Meur) | [Meublés de tourisme](docs/meubles-tourisme.md) |
 | **Impayés** | Import du relevé bancaire, rapprochement automatique des paiements, relances graduées jusqu'à la mise en demeure, jamais sans validation du syndic | [Impayés](docs/impayes.md) |
+| **Pack nouvel arrivant** | Guide de bienvenue, fiche synthétique et bulletin de choix pour un nouveau propriétaire ; pack remis par le bailleur à son locataire, avec la quote-part de charges du logement | [Nouvel arrivant](docs/nouvel-arrivant.md) |
 | **Dossier de vente** | Quand un lot est vendu : fiche synthétique, pré-état daté, plan de travaux et bordereau des documents exigés par la loi, en une archive pour le notaire | [Dossier de vente](docs/dossier-de-vente.md) |
 | **Pack papier** | Courrier, grands caractères, talon de chèque, bulletin papier, affiche du hall : personne n'est laissé de côté | [Pack papier](docs/pack-papier.md) |
 

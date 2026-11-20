@@ -111,3 +111,10 @@ Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante
 | PUT | `/copros/{copro}/meubles-tourisme/declarations/{id}` | Fin de la location touristique |
 | GET | `/copros/{copro}/meubles-tourisme/affichage.pdf?au=` | Affiche pour les parties communes, sans nom ni numéro de lot |
 | GET | `/copros/{copro}/meubles-tourisme/resolution` | Projet de résolution d'interdiction (art. 26 d), si les conditions le permettent |
+
+## Pack nouvel arrivant
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/copros/{copro}/bienvenue/proprietaire.pdf?lots=&nom=&grand=` | Guide de bienvenue, fiche synthétique et bulletin de choix |
+| GET | `/copros/{copro}/bienvenue/locataire.pdf?lots=&grand=` | Pack remis par le bailleur à son locataire, avec la quote-part de charges |
