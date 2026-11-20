@@ -14,3 +14,9 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 Fichiers Claude/
+
+# Données de démonstration de l'interface
+demo/
+
+# Environnement Python local
+.venv/

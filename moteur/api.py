@@ -84,8 +84,10 @@ Lancement local : uvicorn moteur.api:app --reload   (depuis la racine du projet)
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+import secrets
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -93,9 +95,10 @@ from pathlib import Path
 
 from typing import Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Security, UploadFile
+from fastapi import Depends, FastAPI, Request, File, Form, HTTPException, Path as PathParam, Query, Security, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import APIKeyHeader
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -130,15 +133,24 @@ ID_DOSSIER = r"^\d{4}-\d{3}-[a-z0-9-]{1,40}$"
 ID_DEVIS = r"^D\d{1,3}$"
 ID_SONDAGE = r"^S\d{1,3}$"
 
+# Interface web : une session signée (cookie) remplace la clé d'API pour le navigateur.
+# SameSite=Lax : le cookie n'accompagne pas un formulaire posté depuis un autre site.
+SECRET_SESSION = os.getenv("INTERFACE_SECRET") or (
+    hashlib.sha256(f"mitoyen-interface:{TOKEN}".encode()).hexdigest() if TOKEN else secrets.token_hex(32))
+
 app = FastAPI(title="Moteur syndic IA", version="0.1.0",
               description="Prépare les documents du syndic. Le syndic valide, n8n envoie.")
+app.add_middleware(SessionMiddleware, secret_key=SECRET_SESSION, session_cookie="mitoyen_session",
+                   max_age=8 * 3600, same_site="lax", https_only=os.getenv("INTERFACE_HTTPS", "") == "1")
 
 
 cle_api = APIKeyHeader(name="X-API-Key", auto_error=False,
                        description="La valeur de MOTEUR_TOKEN (fichier .env)")
 
 
-def verifier_cle(x_api_key: str | None = Security(cle_api)) -> None:
+def verifier_cle(request: Request, x_api_key: str | None = Security(cle_api)) -> None:
+    if request.session.get("syndic"):          # connecté à l'interface web
+        return
     if not TOKEN:
         raise HTTPException(500, "MOTEUR_TOKEN n'est pas défini côté moteur")
     if x_api_key != TOKEN:
@@ -1299,3 +1311,12 @@ def comparatif_electeur(copro: str = Copro, dossier_id: str = Dossier, sid: str 
     fiche = fiche_de(copro)
     sortie = travaux.generer_pdf(fiche, travaux.synthese(fiche, d), chemin / "comparatif.pdf")
     return FileResponse(sortie, media_type="application/pdf", filename=f"comparatif_{dossier_id}.pdf")
+
+
+# --------------------------------------------------------------------------- #
+# Interface web du syndic (/app), branchée en dernier : elle s'appuie sur ce module
+# --------------------------------------------------------------------------- #
+from . import interface  # noqa: E402
+
+app.mount("/statique", interface.statiques, name="statique")
+app.include_router(interface.routeur)

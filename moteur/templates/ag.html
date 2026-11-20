@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Assemblées générales</h1>
+<p class="chapeau">Mitoyen calcule les délais légaux, prépare les formulaires de vote par correspondance et envoie les rappels. La séance elle-même se tient comme d'habitude.</p>
+
+{% if ags %}
+<table class="table">
+  <thead><tr><th>Date</th><th>Assemblée</th><th>Ordre du jour</th><th>État</th></tr></thead>
+  <tbody>
+  {% for a in ags %}
+  <tr>
+    <td><a href="/app/{{ copro }}/ag/{{ a.id }}"><strong>{{ a.date|date_fr }}</strong></a></td>
+    <td>{{ a.titre }}</td>
+    <td>{{ a.nb_resolutions }} point{{ "s" if a.nb_resolutions > 1 }}</td>
+    <td>{% if a.depouillee %}Tenue, procès-verbal prêt{% elif a.date >= jour.isoformat() %}À venir{% else %}<span class="erreur">Résultats à saisir</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<div class="vide">Aucune assemblée préparée pour l'instant.</div>{% endif %}
+
+<h2>Préparer une assemblée</h2>
+<details class="formulaire" {% if not ags %}open{% endif %}>
+  <summary>Nouvelle assemblée générale</summary>
+  <form method="post" action="/app/{{ copro }}/ag" style="display:grid;gap:.9rem;margin-top:.8rem">
+    <div class="ligne">
+      <label>Date <input type="date" name="date_ag" value="{{ date_conseillee }}" required></label>
+      <label>Heure <input type="text" name="heure" value="18h30" size="6" required></label>
+    </div>
+    <label>Lieu <input type="text" name="lieu" value="Salle commune" required></label>
+    <label>Intitulé <input type="text" name="titre" value="Assemblée générale ordinaire"></label>
+    <label>Lien de visio, si une AG précédente l'a autorisée <input type="url" name="visio" placeholder="https://"></label>
+    <label style="display:flex;gap:.5rem;align-items:center;color:var(--encre)">
+      <input type="checkbox" name="odj_type" value="true" checked> Reprendre l'ordre du jour habituel ({{ odj|length }} points : comptes, budget, fonds de travaux, syndic, conseil syndical…)</label>
+    <label>Autres questions, une par ligne
+      <textarea name="autres" rows="3" placeholder="Remplacement de la porte du hall"></textarea></label>
+    <p class="discret" style="margin:0">La convocation doit être notifiée au moins 21 jours avant : Mitoyen vous indiquera la date limite.</p>
+    <div><button type="submit">Préparer l'assemblée</button></div>
+  </form>
+</details>
+{% endblock %}

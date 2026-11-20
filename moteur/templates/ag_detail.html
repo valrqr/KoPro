@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block contenu %}
+<p class="discret"><a href="/app/{{ copro }}/ag">Assemblées générales</a></p>
+<h1>{{ a.titre }}</h1>
+<p class="chapeau">{{ a.date|date_fr(true)|capitalize }} à {{ a.heure }}, {{ a.lieu }}{% if a.visio %}. Visio : <a href="{{ a.visio }}">{{ a.visio }}</a>{% endif %}.</p>
+{% for al in cal.alertes %}<div class="message"><span class="erreur">{{ al }}</span></div>{% endfor %}
+
+<div class="colonnes">
+  <section>
+    <h2 style="margin-top:0">Calendrier</h2>
+    <table class="table">
+      <tbody>
+      {% for e in cal.etapes %}
+      <tr {% if e.depasse %}class="fait"{% endif %}>
+        <td class="nombre"><strong>{{ e.date|date_fr }}</strong></td>
+        <td>{{ e.etape }}<br><span class="discret">{{ e.detail }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Ordre du jour</h2>
+    <table class="table">
+      <tbody>
+      {% for r in a.resolutions %}
+      <tr><td class="nombre">{{ r.num }}</td>
+        <td>{{ r.titre }}<br><span class="discret">{% if r.majorite == "info" %}Point d'information, sans vote{% else %}Article {{ r.majorite }}{% endif %}</span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <aside>
+    <div class="chiffres">
+      <div class="chiffre{{ ' neutre' if not a.correspondance }}"><span>Votes par correspondance reçus</span><b>{{ a.correspondance|length }}</b>
+        <small>avant le {{ cal.limite_correspondance|date_fr }}</small></div>
+      <div class="chiffre"><span>Rappels aux copropriétaires</span>
+        {% if rappel %}<b>{{ rappel.rappel }}</b><small>{{ rappel.envois|length }} mail{{ "s" if rappel.envois|length > 1 }} part{{ "ent" if rappel.envois|length > 1 else "" }} aujourd'hui</small>
+        {% else %}<small>Automatiques 7 jours avant et la veille.</small>{% endif %}</div>
+    </div>
+    <h3>Documents</h3>
+    <div style="display:grid;gap:.5rem">
+      <a class="bouton secondaire" href="/copros/{{ copro }}/ag/{{ a.id }}/agenda.ics">Fichier pour l'agenda</a>
+      <a class="bouton secondaire" href="/copros/{{ copro }}/ag/{{ a.id }}/feuille-presence.pdf" target="_blank">Feuille de présence</a>
+      {% if a.depouillement %}<a class="bouton" href="/copros/{{ copro }}/ag/{{ a.id }}/pv.pdf" target="_blank">Procès-verbal</a>{% endif %}
+      <form method="get" target="_blank" onsubmit="this.action='/copros/{{ copro }}/ag/{{ a.id }}/formulaires/'+this.cid.value" class="formulaire" style="padding:.8rem">
+        <label>Formulaire de vote par correspondance de
+          <select name="cid">{% for c in coproprietaires %}<option value="{{ c.id }}">{{ c.nom }}</option>{% endfor %}</select></label>
+        <button type="submit" class="secondaire">Ouvrir le formulaire</button>
+      </form>
+    </div>
+  </aside>
+</div>
+{% endblock %}

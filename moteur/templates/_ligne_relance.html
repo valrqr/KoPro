@@ -1,0 +1,39 @@
+{% set noms = {"rappel": "le rappel", "relance": "la relance", "mise_en_demeure": "la mise en demeure"} %}
+{% if not p %}
+<tr class="fait"><td colspan="5">Plus rien à relancer : le compte est à jour.</td></tr>
+{% else %}
+<tr id="relance-{{ p.coproprietaire }}">
+  <td><strong>{{ p.nom }}</strong></td>
+  <td class="nombre fort">{{ p.impaye|euros }}</td>
+  <td class="nombre">{{ p.retard_max_jours }} j</td>
+  <td>{% if p.derniere_relance %}{{ p.derniere_relance.niveau }} du {{ p.derniere_relance.envoyee_le|date_fr }}<br>{% endif %}
+      <span class="discret">{{ p.message }}</span></td>
+  <td>
+    {% if p.etat == "a_preparer" %}
+    <form hx-post="/app/{{ copro }}/impayes/relances/{{ p.coproprietaire }}" hx-target="closest tr" hx-swap="outerHTML">
+      <button type="submit">Préparer {{ noms[p.prochaine] }}</button>
+    </form>
+    {% elif p.etat == "a_envoyer" %}
+    {% set r = relances_reg[p.relance] %}
+    <div class="actions" style="margin-bottom:.5rem">
+      <a class="bouton secondaire" href="/copros/{{ copro }}/relances/{{ r.id }}.pdf" target="_blank">Ouvrir la lettre</a>
+    </div>
+    <form class="ligne" hx-post="/app/{{ copro }}/impayes/relances/{{ p.coproprietaire }}/envoi" hx-target="closest tr" hx-swap="outerHTML">
+      <input type="hidden" name="relance" value="{{ r.id }}">
+      <label>Envoyée le <input type="date" name="envoyee_le" value="{{ jour.isoformat() }}" required></label>
+      <label>Par
+        <select name="moyen">
+          {% if r.niveau == 3 %}
+          <option value="lrar">Recommandé avec AR</option><option value="lre">Recommandé électronique</option>
+          <option value="remise_main">Remise contre émargement</option><option value="commissaire_justice">Commissaire de justice</option>
+          {% else %}
+          <option value="email">Mail</option><option value="courrier">Courrier</option><option value="remise_main">En main propre</option>
+          {% endif %}
+        </select></label>
+      {% if r.niveau == 3 %}<label>Première présentation <input type="date" name="presentee_le"></label>{% endif %}
+      <button type="submit">Marquer envoyée</button>
+    </form>
+    {% else %}<span class="discret">Rien à faire pour l'instant.</span>{% endif %}
+  </td>
+</tr>
+{% endif %}

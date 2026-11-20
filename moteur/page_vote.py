@@ -30,7 +30,7 @@ def _date(iso: str) -> str:
 
 
 STYLE = """
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+@font-face{font-family:Atkinson;src:url(/statique/polices/atkinson-hyperlegible-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}@font-face{font-family:Atkinson;src:url(/statique/polices/atkinson-hyperlegible-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}*{box-sizing:border-box}body{margin:0;font-family:Atkinson,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 background:#F7F6F2;color:#1E1E1E;line-height:1.5}
 main{max-width:640px;margin:0 auto;padding:24px 16px 48px}
 header{display:flex;align-items:center;gap:10px;margin-bottom:20px}

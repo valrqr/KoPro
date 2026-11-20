@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Appels de fonds</h1>
+<p class="chapeau">Exercice {{ fiche.budget_previsionnel.exercice }}. Mitoyen prépare d'abord une version marquée PROJET : relisez le récapitulatif, puis validez pour produire les avis définitifs que n8n enverra.</p>
+<table class="table">
+  <thead><tr><th>Trimestre</th><th>Exigible le</th><th>État</th><th class="nombre">Total</th><th>Action</th></tr></thead>
+  <tbody>
+  {% for a in appels %}
+  <tr>
+    <td><strong>{{ a.trimestre }}{{ "er" if a.trimestre == 1 else "e" }} trimestre</strong></td>
+    <td>{{ a.date|date_fr }}</td>
+    <td>{% if a.statut == "valide" %}Validé, {{ a.nb }} avis{% elif a.statut %}Projet à relire{% else %}<span class="discret">Pas encore préparé</span>{% endif %}</td>
+    <td class="nombre">{{ a.total or "" }}</td>
+    <td>
+      <div class="actions">
+      {% if a.statut %}<a class="bouton secondaire" href="/copros/{{ copro }}/appels/{{ a.exercice }}/T{{ a.trimestre }}/recap" target="_blank">Récapitulatif</a>{% endif %}
+      {% if not a.statut %}
+        <form method="post" action="/app/{{ copro }}/appels/{{ a.trimestre }}"><button type="submit">Préparer le projet</button></form>
+      {% elif a.statut != "valide" %}
+        <form method="post" action="/app/{{ copro }}/appels/{{ a.trimestre }}"
+              onsubmit="return confirm('Valider les avis du {{ a.trimestre }}{{ 'er' if a.trimestre == 1 else 'e' }} trimestre ? Ils seront prêts à envoyer.')">
+          <input type="hidden" name="final" value="true"><button type="submit">Valider les avis</button></form>
+      {% endif %}
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="discret">Les copropriétaires au courrier reçoivent leur avis en version papier, en grands caractères s'ils l'ont demandé, avec un talon de chèque.</p>
+{% endblock %}

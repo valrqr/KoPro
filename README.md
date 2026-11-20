@@ -10,12 +10,15 @@ Un assistant open source pour les syndics **bénévoles et coopératifs** de cop
 
 **Principe : l'agent prépare, le syndic valide et signe.** Mitoyen assiste un syndic humain, il ne le remplace jamais.
 
+<p align="center"><img src="docs/apercu_interface.png" alt="Le tableau de bord du syndic : ce qui est à faire, du plus urgent au moins pressé" width="820"></p>
+
 > ⚠️ Projet en phase 1 (open source / portfolio). Toutes les données du dépôt sont **fictives** : la « Résidence Les Mimosas » et ses 24 lots n'existent pas.
 
 ## Ce que fait Mitoyen
 
 | Brique | En bref | Détails |
 |---|---|---|
+| **Interface du syndic** | Un tableau de bord qui dit ce qui est à faire, du plus urgent au moins pressé ; paiements confirmés et relances préparées en un clic ; copropriétaires présentés comme sur le tableau d'interphone du hall | [Interface](docs/interface.md) |
 | **Fiche et échéancier** | Une fiche par copro (lots, tantièmes, contrats, budget), contrôlée à chaque usage. Chaque lundi, le syndic reçoit ses échéances : contrats à résilier, diagnostics, AG, travaux à préparer | [Installation](docs/installation.md) |
 | **Appels de fonds** | Un avis PDF par copropriétaire, réparti au centime près, validé par le syndic avant envoi | [Installation](docs/installation.md) |
 | **Travaux et devis** | Comparatif des devis, quote-part de chacun, entreprises vérifiées dans les registres publics, résumé neutre rédigé par Mistral | [Travaux et vote](docs/travaux-et-vote.md) |
@@ -30,7 +33,7 @@ Un assistant open source pour les syndics **bénévoles et coopératifs** de cop
 
 <table>
   <tr>
-    <td align="center"><img src="docs/apercu_plan_travaux.png" alt="Projection du plan de travaux" width="500"><br><sub>Le plan de travaux, projeté sur 10 ans</sub></td>
+    <td align="center"><img src="docs/apercu_interphone.png" alt="Les copropriétaires, étage par étage, comme sur le tableau d'interphone" width="500"><br><sub>Les copropriétaires, comme sur le tableau d'interphone</sub></td>
     <td align="center"><img src="docs/apercu_page_vote.png" alt="Page de vote d'un copropriétaire" width="205"><br><sub>La page de vote, sur téléphone</sub></td>
   </tr>
 </table>
@@ -42,12 +45,15 @@ cp .env.example .env        # puis remplir MOTEUR_TOKEN et N8N_ENCRYPTION_KEY
 docker compose up -d --build
 ```
 
-Le moteur répond sur http://localhost:8000/docs, n8n sur http://localhost:5678. Le pas-à-pas complet (workflows n8n, sans Docker, démonstration) est dans [docs/installation.md](docs/installation.md), et la liste des routes dans [docs/api.md](docs/api.md).
+L'interface du syndic est sur http://localhost:8000/app, le moteur répond sur http://localhost:8000/docs, n8n sur http://localhost:5678. Le pas-à-pas complet (workflows n8n, sans Docker, démonstration) est dans [docs/installation.md](docs/installation.md), et la liste des routes dans [docs/api.md](docs/api.md).
 
 ## Architecture
 
 ```
-┌─────────────┐   HTTP + X-API-Key   ┌──────────────────────────┐
+                                     ┌──────────────────────────┐
+  navigateur du syndic ────────────► │  /app : interface web    │
+  (session, mot de passe)            ├──────────────────────────┤
+┌─────────────┐   HTTP + X-API-Key   │                          │
 │    n8n      │ ───────────────────► │  moteur (Python/FastAPI) │
 │ orchestrer, │ ◄─────────────────── │  valider, calculer,      │
 │ mails,      │     JSON + PDF       │  générer les documents   │

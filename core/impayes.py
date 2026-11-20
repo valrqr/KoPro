@@ -443,7 +443,7 @@ def a_relancer(fiche: dict, cpt: dict, reg: list[dict], au: date) -> list[dict]:
             jours = max(attente)
             res.append({**p, "etat": "en_attente", "prochaine": NIVEAUX[suivant],
                         "possible_le": (au + timedelta(days=jours)).isoformat(),
-                        "message": f"{LIBELLES[suivant]} possible dans {jours} jour(s)."})
+                        "message": f"{LIBELLES[suivant]} possible dans {jours} jour{'s' if jours > 1 else ''}."})
         else:
             res.append({**p, "etat": "a_preparer", "prochaine": NIVEAUX[suivant],
                         "message": f"{LIBELLES[suivant]} à préparer."})

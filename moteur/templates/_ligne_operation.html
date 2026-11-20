@@ -1,0 +1,17 @@
+<tr>
+  <td class="nombre">{{ o.date|date_fr }}</td>
+  <td>{{ o.libelle }}<br><span class="discret">{{ o.methode }}</span></td>
+  <td class="nombre"><strong>{{ o.montant|euros }}</strong></td>
+  <td colspan="2">
+    <form class="decision" hx-post="/app/{{ copro }}/impayes/operations/{{ o.operation }}" hx-target="closest tr" hx-swap="outerHTML">
+      <label class="visuellement-cache" for="cp-{{ o.operation }}">Payé par</label>
+        <select name="coproprietaire" id="cp-{{ o.operation }}" aria-label="Payé par">
+          {% set piste = o.parts[0].coproprietaire if o.parts else "" %}
+          {% if not piste %}<option value="">Choisir…</option>{% endif %}
+          {% for c in coproprietaires %}<option value="{{ c.id }}" {% if c.id == piste %}selected{% endif %}>{{ c.nom }}</option>{% endfor %}
+        </select>
+      <button type="submit" name="statut" value="confirme">Rattacher</button>
+      <button type="submit" name="statut" value="ignore" class="secondaire">Sans rapport</button>
+    </form>
+  </td>
+</tr>

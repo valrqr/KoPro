@@ -42,9 +42,18 @@ pip install -r moteur/requirements.txt
 python core/fiche_copro.py config/mimosas.yaml --date 2027-02-15     # contrôle de la fiche + échéances
 python core/avis_appel.py config/mimosas.yaml --trimestre 1          # avis d'appel de fonds en PROJET
 python core/plan_travaux.py config/mimosas.yaml --pdf plan.pdf       # projection du plan de travaux
-MOTEUR_TOKEN=dev uvicorn moteur.api:app --reload                     # l'API
+MOTEUR_TOKEN=dev uvicorn moteur.api:app --reload                     # l'API et l'interface (/app)
 python -m pytest tests/                                              # les tests
 ```
+
+## Démonstration de l'interface
+
+```bash
+python scripts/demo_interface.py
+MOTEUR_DATA_DIR=demo/data MOTEUR_OUT_DIR=demo/out INTERFACE_MOT_DE_PASSE=demo uvicorn moteur.api:app --reload
+```
+
+Puis ouvrir http://localhost:8000/app/mimosas?au=2027-05-20 (mot de passe : `demo`). Voir [interface.md](interface.md).
 
 ## Démonstration travaux et devis
 

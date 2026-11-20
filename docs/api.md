@@ -2,7 +2,7 @@
 
 [← Retour à l'accueil](../README.md)
 
-Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante` et les pages de vote personnelles. La documentation interactive complète est servie par le moteur sur `/docs`.
+L'interface web du syndic est servie sous `/app` (voir [interface.md](interface.md)). Toutes les routes demandent l'en-tête `X-API-Key: <MOTEUR_TOKEN>`, sauf `/sante` et les pages de vote personnelles. La documentation interactive complète est servie par le moteur sur `/docs`.
 
 ## Socle
 

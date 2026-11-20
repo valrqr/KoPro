@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Vos copropriétés</h1>
+<ul class="a-faire">
+  {% for c in copros %}<li><a href="/app/{{ c }}"><strong>{{ c }}</strong></a></li>{% endfor %}
+</ul>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Documents</h1>
+<p class="chapeau">Tout ce que Mitoyen produit à la demande, prêt à imprimer ou à transmettre.</p>
+
+<h2>Pour le hall</h2>
+<div class="actions">
+  <a class="bouton secondaire" href="/copros/{{ copro }}/affiche.pdf?format=A4&au={{ jour.isoformat() }}" target="_blank">Affiche du hall (A4)</a>
+  <a class="bouton secondaire" href="/copros/{{ copro }}/affiche.pdf?format=A3&au={{ jour.isoformat() }}" target="_blank">Affiche du hall (A3)</a>
+  {% if mt %}<a class="bouton secondaire" href="/copros/{{ copro }}/meubles-tourisme/affichage.pdf?au={{ jour.isoformat() }}" target="_blank">Information meublés de tourisme</a>{% endif %}
+</div>
+
+<h2>Sur la copropriété</h2>
+<div class="actions">
+  <a class="bouton secondaire" href="/copros/{{ copro }}/fiche-synthetique.pdf?au={{ jour.isoformat() }}" target="_blank">Fiche synthétique</a>
+  {% if fiche.plan_travaux %}<a class="bouton secondaire" href="/copros/{{ copro }}/plan.pdf" target="_blank">Plan de travaux</a>{% endif %}
+</div>
+
+<h2>Accueillir un nouvel arrivant</h2>
+<div class="ligne" style="align-items:start">
+  <form class="formulaire" method="get" action="/copros/{{ copro }}/bienvenue/proprietaire.pdf" target="_blank" style="flex:1 1 20rem">
+    <strong>Nouveau propriétaire</strong>
+    <fieldset class="choix-lots">
+      <legend>Les lots achetés</legend>
+      {% for g in groupes %}<div class="proprio">Lots de {{ g.nom }}</div>
+        {% for l in g.lots %}<label><input type="checkbox" name="lots" value="{{ l.numero }}"> Lot {{ l.numero }}, {{ l.desc or l.type }}</label>{% endfor %}
+      {% endfor %}
+    </fieldset>
+    <label>Son nom <input type="text" name="nom" required minlength="2"></label>
+    <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="grand" value="true"> Grands caractères</label>
+    <input type="hidden" name="au" value="{{ jour.isoformat() }}">
+    <div><button type="submit">Préparer le pack de bienvenue</button></div>
+  </form>
+  <form class="formulaire" method="get" action="/copros/{{ copro }}/bienvenue/locataire.pdf" target="_blank" style="flex:1 1 16rem">
+    <strong>Nouveau locataire</strong>
+    <p class="discret" style="margin:0">Un document à remettre au bailleur, qui le donne à son locataire.</p>
+    <label>Logement loué
+      <select name="lots">{% for l in logements %}<option value="{{ l.numero }}">Lot {{ l.numero }}, {{ l.desc or l.type }}</option>{% endfor %}</select></label>
+    <div><button type="submit">Préparer le pack locataire</button></div>
+  </form>
+</div>
+
+<h2 id="vente">Une vente</h2>
+{% if telechargement %}<div class="message">Le dossier est prêt : <a class="bouton" href="{{ telechargement }}">Télécharger le dossier (ZIP)</a></div>{% endif %}
+<form class="formulaire" method="post" action="/app/{{ copro }}/documents/vente">
+  <fieldset class="choix-lots">
+    <legend>Les lots vendus (un seul vendeur par dossier)</legend>
+    {% for g in groupes %}<div class="proprio">{{ g.nom }}</div>
+      {% for l in g.lots %}<label><input type="checkbox" name="lots" value="{{ l.numero }}"> Lot {{ l.numero }}, {{ l.desc or l.type }}</label>{% endfor %}
+    {% endfor %}
+  </fieldset>
+  <p class="discret" style="margin:0">Fiche synthétique, pré-état daté, plan de travaux et bordereau des documents exigés, réunis pour le notaire. Les charges payées par le vendeur restent à compléter d'après vos comptes.</p>
+  <div><button type="submit">Préparer le dossier de vente</button></div>
+</form>
+
+<h2 id="meubles">Meublés de tourisme</h2>
+<p>{{ mt_actives }} logement{{ "s" if mt_actives > 1 }} déclaré{{ "s" if mt_actives > 1 }} en meublé de tourisme.
+{% if eligibilite.verdict == "possible" %}Le règlement permettrait de voter une interdiction à la double majorité, si un copropriétaire le demande.
+{% elif eligibilite.verdict == "a_verifier" %}Une interdiction serait peut-être possible : le règlement est à vérifier.
+{% elif eligibilite.verdict == "deja_interdit" %}Le règlement les interdit déjà.{% endif %}</p>
+{% if mt %}
+<table class="table" style="margin-bottom:1rem">
+  <thead><tr><th>Lot</th><th>Information reçue le</th><th>Présentée en AG</th><th>Fin</th></tr></thead>
+  <tbody>{% for d in mt %}<tr><td>Lot {{ d.lot }}</td><td>{{ d.recue_le|date_fr }}</td><td>{{ d.inscrite_ag|date_fr if d.inscrite_ag else "À la prochaine AG" }}</td><td>{{ d.fin_le|date_fr if d.fin_le else "" }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endif %}
+<details class="formulaire">
+  <summary>Enregistrer une déclaration reçue</summary>
+  <form method="post" action="/app/{{ copro }}/documents/meubles-tourisme" style="display:grid;gap:.9rem;margin-top:.8rem">
+    <div class="ligne">
+      <label>Logement <select name="lot">{% for l in logements %}<option value="{{ l.numero }}">Lot {{ l.numero }}, {{ l.desc or l.type }}</option>{% endfor %}</select></label>
+      <label>Reçue le <input type="date" name="recue_le" value="{{ jour.isoformat() }}" required></label>
+      <label>Résidence principale du loueur ?
+        <select name="residence_principale"><option value="">Ne sait pas</option><option value="non">Non</option><option value="oui">Oui</option></select></label>
+    </div>
+    <div><button type="submit">Enregistrer</button></div>
+  </form>
+</details>
+{% endblock %}

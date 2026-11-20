@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion – Mitoyen</title>
+  <link rel="icon" href="/statique/icone_64.png"><link rel="stylesheet" href="/statique/app.css">
+</head>
+<body>
+<div class="connexion">
+  <form class="formulaire" method="post" action="/app/connexion">
+    <a class="marque" href="/app"><img src="/statique/icone_64.png" alt="">Mitoyen</a>
+    <p class="discret" style="margin:0">Partagez les murs, plus les frais de syndic.</p>
+    <label>Mot de passe du syndic
+      <input type="password" name="mot_de_passe" autocomplete="current-password" required autofocus>
+    </label>
+    {% if erreur %}<p class="erreur" role="alert" style="margin:0">{{ erreur }}</p>{% endif %}
+    <button type="submit">Se connecter</button>
+  </form>
+</div>
+</body>
+</html>

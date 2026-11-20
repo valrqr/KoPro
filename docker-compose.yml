@@ -21,6 +21,8 @@ services:
       MOTEUR_URL_PUBLIQUE: ${MOTEUR_URL_PUBLIQUE:-http://localhost:8000}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-medium-latest}
+      INTERFACE_MOT_DE_PASSE: ${INTERFACE_MOT_DE_PASSE:-}
+      INTERFACE_HTTPS: ${INTERFACE_HTTPS:-0}
     volumes:
       - ./config:/app/config:ro     # fiches des copros, en lecture seule
       - ./out:/app/out              # avis et récaps générés

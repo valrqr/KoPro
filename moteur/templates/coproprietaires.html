@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Copropriétaires</h1>
+<p class="chapeau">Comme sur le tableau d'interphone du hall, étage par étage. Chaque étiquette dit comment la personne reçoit ses documents et si elle a du retard.</p>
+<div class="interphone">
+  {% for etage, cartes in etages.items() %}
+  <section class="plaque" aria-label="{{ etage }}">
+    <h2>{{ etage }}</h2>
+    <div class="etiquettes">
+      {% for k in cartes %}
+      <article class="etiquette">
+        <div class="nom">{{ k.c.nom }}</div>
+        <div class="infos">
+          {% if k.role %}<span class="role">{{ k.role }}</span> · {% endif %}
+          Lot{{ "s" if k.lots|length > 1 }} {{ k.lots|map(attribute="numero")|join(", ") }}<br>
+          {% if k.canal == "courrier" %}Par courrier{% else %}Par mail{% endif %}{% if k.c.grands_caracteres %}, grands caractères{% endif %}{% if k.c.paiement == "prelevement" %}, prélèvement{% endif %}{% if k.c.aidant %}, aidant : {{ k.c.aidant.nom }}{% endif %}{% if k.meuble_tourisme %}, meublé de tourisme déclaré{% endif %}
+          {% if k.impaye and k.impaye|float > 0 %}<br><span class="du">{{ k.impaye|euros }} en retard</span>{% endif %}
+        </div>
+        <span class="appel" aria-hidden="true"></span>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<p class="discret" style="margin-top:1.4rem">Pour modifier un copropriétaire (mail, courrier, aidant…), mettez à jour la fiche de la copropriété : <code>config/{{ copro }}.yaml</code>.</p>
+{% endblock %}

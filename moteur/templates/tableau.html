@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>{% if a_faire %}{{ a_faire|length + reste }} chose{{ "s" if (a_faire|length + reste) > 1 }} à faire{% else %}Rien d'urgent{% endif %}</h1>
+<p class="chapeau">{{ jour|date_fr(true)|capitalize }}. Les plus pressées en premier.</p>
+<div class="colonnes">
+  <section aria-label="À faire">
+    {% if a_faire %}
+    <ul class="a-faire">
+      {% for t in a_faire %}
+      <li>
+        {% if t.lien %}<a href="{{ t.lien }}" class="{{ t.niveau }}">{% else %}<div class="{{ t.niveau }}">{% endif %}
+          <strong>{{ t.texte }}</strong>
+          <span class="quand">{% if t.niveau == "urgent" %}<span class="niveau">Urgent</span>{% elif t.date %}{{ t.date|date_fr }}{% endif %}</span>
+          <span class="detail">{{ t.detail }}</span>
+        {% if t.lien %}</a>{% else %}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if reste %}<p class="discret">Et {{ reste }} autre{{ "s" if reste > 1 }} échéance{{ "s" if reste > 1 }} plus lointaine{{ "s" if reste > 1 }}.</p>{% endif %}
+    {% else %}
+    <div class="vide">Aucune échéance dans les quatre prochains mois. Profitez-en pour importer le dernier relevé bancaire.</div>
+    {% endif %}
+  </section>
+  <aside class="chiffres" aria-label="Chiffres clés">
+    <div class="chiffre"><span>Impayés</span>
+      {% if imp %}<b>{{ imp.total_impayes|euros_rond }}</b>
+        <small>{{ imp.nb_debiteurs }} copropriétaire{{ "s" if imp.nb_debiteurs > 1 }} en retard{% if imp.dont_a_confirmer|float > 0 %}, dont {{ imp.dont_a_confirmer|euros_rond }} peut-être déjà payés{% endif %}</small>
+      {% else %}<b>—</b><small><a href="/app/{{ copro }}/impayes">Importez un relevé</a> pour les connaître.</small>{% endif %}
+    </div>
+    <div class="chiffre"><span>Prochaine assemblée</span>
+      {% if ag %}<b>{{ ag.date|date_fr }}</b><small><a href="/app/{{ copro }}/ag/{{ ag.id }}">{{ ag.titre }}</a></small>
+      {% else %}<b>—</b><small><a href="/app/{{ copro }}/ag">Préparer l'AG</a></small>{% endif %}
+    </div>
+    {% if solde_ft %}<div class="chiffre"><span>Fonds de travaux</span><b>{{ solde_ft|euros_rond }}</b>
+      <small>de côté pour les travaux à venir</small></div>{% endif %}
+  </aside>
+</div>
+{% endblock %}

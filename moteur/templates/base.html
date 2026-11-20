@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titre %}Mitoyen{% endblock %}{% if fiche %} – {{ fiche.copropriete.nom }}{% endif %}</title>
+  <link rel="icon" href="/statique/icone_64.png">
+  <link rel="stylesheet" href="/statique/app.css">
+  <script src="/statique/htmx.min.js" defer></script>
+</head>
+<body>
+<div class="ossature">
+  <aside class="barre">
+    <a class="marque" href="/app{% if copro %}/{{ copro }}{% endif %}"><img src="/statique/icone_64.png" alt="">Mitoyen</a>
+    {% if fiche %}<div class="copro-nom">{{ fiche.copropriete.nom }}</div>{% endif %}
+    {% if copro %}
+    <nav aria-label="Rubriques">
+      {% set rubriques = [("tableau", "", "Tableau de bord"), ("impayes", "/impayes", "Impayés"),
+                          ("appels", "/appels", "Appels de fonds"), ("ag", "/ag", "Assemblées générales"),
+                          ("coproprietaires", "/coproprietaires", "Copropriétaires"), ("documents", "/documents", "Documents")] %}
+      {% for cle, chemin, libelle in rubriques %}
+      <a href="/app/{{ copro }}{{ chemin }}" {% if onglet == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+    <div class="bas">
+      {% if jour_demo %}<div class="demo">Date de démonstration : {{ jour|date_fr }}.
+        <a href="?au=">Revenir à aujourd'hui</a></div>{% endif %}
+      {% if copros|length > 1 %}<a href="/app">Changer de copropriété</a>{% endif %}
+      <form method="post" action="/app/deconnexion"><button class="secondaire" type="submit">Se déconnecter</button></form>
+    </div>
+  </aside>
+  <main>
+    {% if message %}<div class="message" role="status">{{ message }}</div>{% endif %}
+    {% block contenu %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

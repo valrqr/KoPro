@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Impayés</h1>
+<p class="chapeau">Importez le relevé du compte de la copropriété : Mitoyen reconnaît les paiements, vous confirmez ceux dont il n'est pas sûr, et il prépare les relances dans l'ordre prévu par la loi.</p>
+
+{% if imp %}
+<div class="colonnes">
+  <div>
+{% endif %}
+<form class="formulaire" method="post" action="/app/{{ copro }}/impayes/releve" enctype="multipart/form-data">
+  <label>Relevé bancaire au format CSV, tel que votre banque le télécharge
+    <input type="file" name="fichier" accept=".csv,text/csv" required></label>
+  <div><button type="submit">Importer le relevé</button>
+  <span class="discret">Un relevé déjà importé ne crée pas de doublon.</span></div>
+</form>
+{% if imp %}
+  </div>
+  <aside class="chiffres">
+    <div class="chiffre"><span>Total des impayés</span><b>{{ imp.total_impayes|euros }}</b>
+      <small>{{ imp.nb_debiteurs }} copropriétaire{{ "s" if imp.nb_debiteurs > 1 }}{% if imp.dont_a_confirmer|float > 0 %}, dont {{ imp.dont_a_confirmer|euros }} peut-être déjà payés{% endif %}</small></div>
+    <div class="chiffre neutre"><span>Relevé importé jusqu'au</span><b>{{ imp.releve.au|date_fr }}</b>
+      <small>{{ imp.releve.nb_operations }} opérations</small></div>
+    <a class="bouton secondaire" href="/copros/{{ copro }}/impayes.pdf?au={{ jour.isoformat() }}" target="_blank">État des impayés (PDF)</a>
+  </aside>
+</div>
+
+<h2 id="a-confirmer">Paiements à confirmer</h2>
+{% if imp.a_confirmer or imp.non_rapproches %}
+<p class="discret">Tant qu'un paiement n'est pas confirmé, il n'est pas compté, et le copropriétaire concerné n'est pas relancé.</p>
+<table class="table">
+  <thead><tr><th>Date</th><th>Libellé du relevé</th><th class="nombre">Montant</th><th colspan="2">Votre décision</th></tr></thead>
+  <tbody>
+    {% for o in imp.a_confirmer + imp.non_rapproches %}{% include "_ligne_operation.html" %}{% endfor %}
+  </tbody>
+</table>
+{% else %}<div class="vide">Tous les paiements du relevé sont rattachés.</div>{% endif %}
+
+<h2 id="relances">Relances</h2>
+{% if imp.relances %}
+<table class="table">
+  <thead><tr><th>Copropriétaire</th><th class="nombre">Impayé</th><th class="nombre">Retard</th><th>Où en est-on</th><th>Action</th></tr></thead>
+  <tbody>
+    {% for p in imp.relances %}{% include "_ligne_relance.html" %}{% endfor %}
+  </tbody>
+</table>
+<p class="discret">Toujours dans l'ordre : rappel amiable, relance, puis mise en demeure en recommandé, avec au moins 15 jours entre deux courriers.</p>
+{% else %}<div class="vide">Personne n'est en retard.</div>{% endif %}
+{% else %}
+<div class="vide" style="margin-top:1.4rem">Aucun relevé importé pour l'instant. Pour essayer, utilisez le relevé fictif fourni dans <code>exemples/banque/</code>.</div>
+{% endif %}
+{% endblock %}

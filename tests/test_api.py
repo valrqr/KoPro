@@ -1188,3 +1188,54 @@ def test_bienvenue_locataire():
     assert str(qp["generales"]) == "4.50" and str(qp["ascenseur"]) == "5.50"
     assert c.get("/copros/mimosas/bienvenue/locataire.pdf", headers=H, params={"lots": [17]}).status_code == 422
     assert c.get("/copros/mimosas/bienvenue/locataire.pdf", params={"lots": [9]}).status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Interface web du syndic
+# --------------------------------------------------------------------------- #
+def _navigateur():
+    from fastapi.testclient import TestClient
+    from moteur.api import app
+    return TestClient(app)
+
+
+def test_interface_connexion_obligatoire():
+    n = _navigateur()
+    r = n.get("/app/mimosas", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/app/connexion"
+    assert n.post("/app/connexion", data={"mot_de_passe": "faux"}).text.count("Mot de passe incorrect") == 1
+    # Sans session ni clé, les PDF de l'API restent fermés
+    assert n.get("/copros/mimosas/fiche-synthetique.pdf").status_code == 401
+    r = n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]}, follow_redirects=False)
+    assert r.status_code == 303
+    # Connecté : la session ouvre aussi les routes de l'API (liens vers les PDF)
+    assert n.get("/copros/mimosas/fiche-synthetique.pdf").status_code == 200
+    n.post("/app/deconnexion")
+    assert n.get("/copros/mimosas/fiche-synthetique.pdf").status_code == 401
+
+
+def test_interface_pages_et_actions():
+    n = _navigateur()
+    n.post("/app/connexion", data={"mot_de_passe": os.environ["MOTEUR_TOKEN"]})
+    for page in ("", "/impayes", "/appels", "/ag", "/coproprietaires", "/documents"):
+        r = n.get(f"/app/mimosas{page}", params={"au": "2027-05-20"})
+        assert r.status_code == 200, page
+        assert 'aria-current="page"' in r.text
+    t = n.get("/app/mimosas").text
+    assert "à faire" in t or "Rien d'urgent" in t
+    assert "Résidence Les Mimosas" in t and "/statique/app.css" in t
+    # Le tableau d'interphone : un étage par plaque, les retards en orange
+    cp = n.get("/app/mimosas/coproprietaires").text
+    assert "Rez-de-chaussée" in cp and "3e étage" in cp and "Syndic" in cp
+    # Une AG préparée depuis l'interface
+    r = n.post("/app/mimosas/ag", data={"date_ag": "2027-11-20", "heure": "18h", "lieu": "Salle commune",
+                                        "odj_type": "true", "autres": "Remplacement de la porte du hall"},
+               follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/app/mimosas/ag/2027-11-20"
+    d = n.get("/app/mimosas/ag/2027-11-20").text
+    assert "Remplacement de la porte du hall" in d and "Calendrier" in d
+    # Heure illisible : message clair, pas d'erreur serveur
+    r = n.post("/app/mimosas/ag", data={"date_ag": "2027-11-27", "heure": "le soir", "lieu": "Salle commune"})
+    assert r.status_code == 200 and "AG non créée" in r.text
+    # Une copropriété inconnue
+    assert n.get("/app/inconnue").status_code == 404
